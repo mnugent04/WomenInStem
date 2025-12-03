@@ -8,7 +8,7 @@ CS125 Final Project: Youth Group Management System
 
 ### What do they want to do?
 * Schedule events
-* View calendar of events 
+* View events 
 * Manage small groups
 * Keep track of attendance
 * Registration for events
@@ -18,14 +18,14 @@ CS125 Final Project: Youth Group Management System
 
 **Leaders:**
 * Create events
-* Update calendar and view calendar
+* Update and view events
 * Manage and view small groups
 * Should not be able to delete past events (to keep records clear)
 * Keep track of attendance
 * Register/ view registration for events
-* Take meeting and event notes
+* Take event notes
 * Should not be able to delete notes that are not theirs
-* Update contact list of youth group parishioners 
+* Update list of youth group members or leaders 
 * Head pastor/ select leaders have master privilege and are able to grant other access
 
 **Students/ Parents:**
@@ -33,7 +33,7 @@ CS125 Final Project: Youth Group Management System
 * Ability to view but not edit small groups
 * View a schedule of past and upcoming events and small groups
 * Check into event
-* Should not be able to edit calendar, small groups, registration, or events
+* Should not be able to edit small groups, registration, or events
 
 ## Team Name:
 **Woman In Stem**
@@ -58,7 +58,11 @@ Hit ctrl^d to exit out of mysql, then type this to load in the data:
 ```mysql -u root -p -h 127.0.0.1 < youthGroupData.sql```
 
 **Check that the database exists and is loaded correctly:**  
-Reconnect: ```mysql -u root -p -h 127.0.0.1```  
+Reconnect: ```mysql -u root -p -h 127.0.0.1``` 
+
+if you have something running on port 3306, use this instead:
+```mysql -u root -p -h 127.0.0.1 -P (your port number)```
+
 Then run:  
 ```
 SHOW DATABASES;  

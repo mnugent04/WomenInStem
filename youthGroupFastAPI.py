@@ -1,13 +1,15 @@
-
 import mysql.connector
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 import os
+from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- Database Configuration ---
 # NOTE: Update with your database credential
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_NAME
+from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
+from database import get_mysql_pool, get_mongo_client, close_connections
 
 # --- Connection Pooling ---
 try:
@@ -17,12 +19,28 @@ try:
         user=DB_USER,
         password=DB_PASSWORD,
         host=DB_HOST,
+        port=DB_PORT,
         database=DB_NAME
     )
     print("Database connection pool created successfully.")
 except mysql.connector.Error as err:
     print(f"Error creating connection pool: {err}")
     exit()
+
+
+# --- App Lifecycle Management ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize all database connections
+    print("Application startup: Initializing database connections...")
+    get_mysql_pool()
+    get_mongo_client()
+    # get_redis_client()
+    yield
+    # Shutdown: Close all database connections
+    print("Application shutdown: Closing database connections...")
+    close_connections()
+
 
 # --- FastAPI App ---
 app = FastAPI(
@@ -31,6 +49,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# --- CORS Middleware ---
+# This will allow the frontend (running on a different origin) to communicate with the API.
+# For demonstration purposes, we allow all origins, methods, and headers.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict this to your frontend's domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # --- Pydantic Models (for request/response validation) ---
 class Person(BaseModel):
     id: int
@@ -38,37 +68,45 @@ class Person(BaseModel):
     lastName: str
     age: int | None = None
 
+
 class PersonCreate(BaseModel):
     firstName: str
     lastName: str
     age: int | None = None
 
+
 class Volunteer(BaseModel):
     id: int
     personID: int
+
 
 class Attendee(BaseModel):
     id: int
     personID: int
     guardian: str
 
+
 class Leader(BaseModel):
     id: int
     personID: int
 
+
 class SmallGroup(BaseModel):
     id: int
     name: str
+
 
 class SmallGroupMember(BaseModel):
     id: int
     attendeeID: int
     smallGroupID: int
 
+
 class SmallGroupLeader(BaseModel):
     id: int
     leaderID: int
     smallGroupID: int
+
 
 class Event(BaseModel):
     id: int
@@ -78,6 +116,7 @@ class Event(BaseModel):
     location: str
     notes: str | None
 
+
 class Registration(BaseModel):
     id: int
     eventID: int
@@ -85,10 +124,12 @@ class Registration(BaseModel):
     leaderID: int | None
     emergencyContact: str
 
+
 class AttendanceRecord(BaseModel):
     id: int
     personID: int
     eventID: int
+
 
 # --- API Endpoints ---
 @app.get("/")
@@ -97,6 +138,7 @@ def read_root():
     Root endpoint with a welcome message.
     """
     return {"message": "Welcome to the YouthGroup API!"}
+
 
 @app.get("/people", response_model=list[Person])
 def get_all_people():
@@ -115,6 +157,7 @@ def get_all_people():
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.get("/people/{person_id}", response_model=Person)
 def get_person_by_id(person_id: int):
@@ -136,6 +179,7 @@ def get_person_by_id(person_id: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.post("/people", response_model=Person, status_code=201)
 def create_person(person: PersonCreate):
@@ -160,6 +204,7 @@ def create_person(person: PersonCreate):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.put("/people/{person_id}", response_model=Person)
 def update_person(person_id: int, person: PersonCreate):
@@ -190,6 +235,7 @@ def update_person(person_id: int, person: PersonCreate):
             cursor.close()
             cnx.close()
 
+
 @app.delete("/people/{person_id}")
 def delete_person(person_id: int):
     """
@@ -210,6 +256,7 @@ def delete_person(person_id: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.get("/volunteers")
 def get_all_volunteers():
@@ -232,6 +279,7 @@ def get_all_volunteers():
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.get("/volunteers/{volunteer_id}")
 def get_volunteer_by_id(volunteer_id: int):

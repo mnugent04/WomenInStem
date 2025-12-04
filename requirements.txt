@@ -1,4 +1,6 @@
-pydantic
-fastapi
+pydantic~=2.10.3
+fastapi~=0.123.5
 uvicorn
-mysql-connector-python
+mysql-connector-python~=9.5.0
+pymongo~=4.15.5
+config~=0.5.1

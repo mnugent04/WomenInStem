@@ -20,15 +20,19 @@ def setup_mongo_data():
             {
                 "event_id": 1,
                 "fields": [
-                    {"required_items": "Bible, Pen, Journal"},
-                    {"description": "Weekly youth group Bible study"}
+                    {
+                        "required_items": "Bible, Pen, Journal",
+                        "description": "Weekly youth group Bible study"
+                    }
                 ]
             },
             {
                 "event_id": 2,
                 "fields": [
-                    {"required_items": "Sleeping bag, Chlothes for 3 days, Toiletries, Pillow, Bible, Flashlight"},
-                    {"description": "A once a year retreat for all youth group members"}
+                    {
+                        "required_items": "Sleeping bag, Chlothes for 3 days, Toiletries, Pillow, Bible, Flashlight",
+                        "description": "A once a year retreat for all youth group members"
+                    }
                 ]
             }
         ]

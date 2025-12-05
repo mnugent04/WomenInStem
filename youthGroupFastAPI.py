@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 import os
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional, List
 
 # --- Database Configuration ---
 # NOTE: Update with your database credential
@@ -168,10 +169,13 @@ class PyObjectId(ObjectId):
         raise ValueError("Invalid ObjectId")
 
 
+class EventField(BaseModel):
+    required_items: Optional[str] = None
+    description: Optional[str] = None
+
 class EventType(BaseModel):
     event_id: int
-    required_items: str
-    description: str
+    fields: List[EventField]
 
 
 # --- API Endpoints ---
@@ -353,21 +357,21 @@ def get_volunteer_by_id(volunteer_id: int):
 
 @app.get("/event/{event_id}/event_type", response_model=EventType)
 def get_event_types(event_id: int):
-    """
-    Retrieves all reviews for a specific product from MongoDB.
-    """
     try:
         db = get_mongo_db()
-        reviews_collection = db["eventTypes"]
-        event_types = reviews_collection.find_one({"event_id": event_id})
+        collection = db["eventTypes"]
 
-        if not event_types:
+        event_type = collection.find_one({"event_id": event_id})
+        if not event_type:
             raise HTTPException(status_code=404, detail=f"No event type found for event ID: {event_id}")
 
-        return event_types
+        # Convert MongoDB ObjectId to string or remove it
+        event_type["_id"] = str(event_type["_id"])
+
+        return event_type
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
-
 
 @app.get("/demo", response_class=FileResponse)
 async def read_demo():

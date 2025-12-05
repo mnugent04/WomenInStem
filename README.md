@@ -76,8 +76,10 @@ Create a file named config.py
 ```
 DB_USER = "root"  
 DB_PASSWORD = "your_password"   
-DB_HOST = "127.0.0.1"  
+DB_HOST = "host.docker.internal"  
 DB_NAME = "YouthGroupDB"
+MONGO_URI = "your mongo uri"
+MONGO_DB_NAME="youthgroup_db"
 ```
 **Don't forget to add the password!**
 
@@ -101,3 +103,23 @@ http://127.0.0.1:8000/people
 * http://127.0.0.1:8000/people  
 * Click Send  
 * You should see a list of people returned as JSON.
+
+## To Dockerize your file:
+1.  **Build the Docker Image:**
+    From the project root directory, run the `docker build` command:
+    ```bash
+    docker build -t youthgroup-api .
+    ```
+2.  **Run the Docker Container (Secure Method):**
+    Execute this command from your project root:
+    ```bash
+    docker run --rm -it \
+      -p 8099:8099 \
+      youthgroup-api
+    ```
+
+## To run the Mongo endpoints:
+* Make sure your config is up to date
+* Make sure your IP address is connected in MongoDB
+* Run as normal and go to
+* http://127.0.0.1:8000/event-type/{event_type

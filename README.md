@@ -118,8 +118,31 @@ http://127.0.0.1:8000/people
       youthgroup-api
     ```
 
+## To 'run as normal' as stated below:
+* run the required setup for either mongo or redis, named "setup_mongo.py" or "setup_redis.py"
+* then recreate the image using 
+    ```bash
+    docker build -t youthgroup-api .
+    ```
+* then run the image using 
+    ```bash
+    docker run --rm -it \
+      -p 8099:8099 \
+      youthgroup-api
+    ```
+(just like above!)
+
+* then you can click the link it gives, OR instead you can follow the instructions below for mongo and redis endpoints. 
+* NOTE**: if you are running windows, you must manually change the 0.0.0.0 in the link to be localhost, otherwise it will not work!
+* Then you can add the link paths below. 
+
 ## To run the Mongo endpoints:
-* Make sure your config is up to date
+* Make sure your config and requirements are up to date
 * Make sure your IP address is connected in MongoDB
 * Run as normal and go to
-* http://127.0.0.1:8000/event-type/{event_type
+* http://127.0.0.1:8000/event-type/{event_type}
+
+## To run the Redis endpoints:
+* Make sure your config and requirements are up to date
+* Run as normal and go to
+* http://127.0.0.1:8000/event/{eventId}/live-checkins

@@ -38,6 +38,9 @@ def setup_mongo_data():
         event_types_collection.insert_many(event_types_data)
         print(f"{len(event_types_data)} event type documents inserted successfully.")
 
+        for doc in db["eventTypes"].find({}):
+            db["eventTypes"].update_one({"_id": doc["_id"]}, {"$rename": {"eventId": "event_id"}})
+
     except Exception as e:
         print(f"An error occurred during MongoDB setup: {e}")
     finally:

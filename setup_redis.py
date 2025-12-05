@@ -39,6 +39,7 @@ def setup_redis_data():
     finally:
         close_connections()
 
+
 if __name__ == "__main__":
     print("--- Starting Redis Data Setup ---")
     setup_redis_data()

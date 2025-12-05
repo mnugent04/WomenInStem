@@ -9,7 +9,8 @@ from typing import Optional, List, Dict
 
 # --- Database Configuration ---
 # NOTE: Update with your database credential
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, REDIS_PASSWORD, REDIS_HOST, MONGO_URI
+from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, \
+    REDIS_PASSWORD, REDIS_HOST, MONGO_URI
 from database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db, get_redis_conn, \
     get_redis_client, get_db_connection
 
@@ -169,9 +170,11 @@ class PyObjectId(ObjectId):
             return ObjectId(v)
         raise ValueError("Invalid ObjectId")
 
+
 # pydantic model for mongodb
 class EventTypeQuery(BaseModel):
     event_type: str
+
 
 # pydantic models for redis
 class CheckedInStudent(BaseModel):
@@ -179,6 +182,7 @@ class CheckedInStudent(BaseModel):
     firstName: str
     lastName: str
     checkInTime: Optional[str] = None
+
 
 class LiveCheckInSummary(BaseModel):
     eventId: int
@@ -363,6 +367,7 @@ def get_volunteer_by_id(volunteer_id: int):
             cursor.close()
             cnx.close()
 
+
 # mongodb!
 @app.get("/event-type/{event_type}")
 def get_event_type(event_type: str):
@@ -389,6 +394,7 @@ def get_event_type(event_type: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
 
 # redis!
 @app.get("/event/{eventId}/live-checkins", response_model=LiveCheckInSummary)
@@ -457,6 +463,7 @@ def get_live_checkins(eventId: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 @app.get("/demo", response_class=FileResponse)
 async def read_demo():

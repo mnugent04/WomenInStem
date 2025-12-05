@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # --- Database Configuration ---
 # NOTE: Update with your database credential
 from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
-from database import get_mysql_pool, get_mongo_client, close_connections
+from database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db
 
 # --- Connection Pooling ---
 try:
@@ -129,6 +129,49 @@ class AttendanceRecord(BaseModel):
     id: int
     personID: int
     eventID: int
+
+
+# --- Pydantic Models for MongoDB Data ---
+from typing import List, Optional, Any
+from datetime import datetime
+from pydantic import Field, GetCoreSchemaHandler
+from pydantic_core import core_schema
+from bson import ObjectId
+
+
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_pydantic_core_schema__(
+            cls, source: Any, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        """
+        Return a Pydantic CoreSchema that defines how to validate and serialize ObjectIds.
+        """
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.str_schema(),
+            python_schema=core_schema.union_schema(
+                [
+                    core_schema.is_instance_schema(ObjectId),
+                    core_schema.no_info_plain_validator_function(cls.validate),
+                ]
+            ),
+            serialization=core_schema.plain_serializer_function_ser_schema(str),
+        )
+
+    @classmethod
+    def validate(cls, v: Any) -> ObjectId:
+        """Validate that the input is a valid ObjectId."""
+        if isinstance(v, ObjectId):
+            return v
+        if ObjectId.is_valid(v):
+            return ObjectId(v)
+        raise ValueError("Invalid ObjectId")
+
+
+class EventType(BaseModel):
+    event_id: int
+    required_items: str
+    description: str
 
 
 # --- API Endpoints ---
@@ -306,6 +349,24 @@ def get_volunteer_by_id(volunteer_id: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
+
+@app.get("/event/{event_id}/event_type", response_model=EventType)
+def get_event_types(event_id: int):
+    """
+    Retrieves all reviews for a specific product from MongoDB.
+    """
+    try:
+        db = get_mongo_db()
+        reviews_collection = db["eventTypes"]
+        event_types = reviews_collection.find_one({"event_id": event_id})
+
+        if not event_types:
+            raise HTTPException(status_code=404, detail=f"No event type found for event ID: {event_id}")
+
+        return event_types
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
 
 @app.get("/demo", response_class=FileResponse)

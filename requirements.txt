@@ -4,3 +4,4 @@ uvicorn
 mysql-connector-python~=9.5.0
 pymongo~=4.15.5
 config~=0.5.1
+redis

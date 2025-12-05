@@ -1,13 +1,13 @@
 import mysql.connector.pooling
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
-# import redis
+import redis
 
 import os
 import warnings
 
 # --- Secret Management ---
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, MONGO_URI, MONGO_DB_NAME
+from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, MONGO_URI, MONGO_DB_NAME, REDIS_HOST, REDIS_PORT, REDIS_SSL, REDIS_PASSWORD, REDIS_USERNAME
 
 # --- Connection Clients / Pools ---
 db_pool = None
@@ -48,25 +48,25 @@ def get_mongo_client():
             exit()
     return mongo_client
 
-# def get_redis_client():
-#     """Initializes and returns the Redis client."""
-#     global redis_client
-#     if redis_client is None:
-#         try:
-#             redis_client = redis.Redis(
-#                 host=REDIS_HOST,
-#                 port=REDIS_PORT,
-#                 decode_responses=True,
-#                 username=REDIS_USERNAME,
-#                 password=REDIS_PASSWORD,
-#             )
-#             # Check connection
-#             redis_client.ping()
-#             print("Successfully connected to Redis!")
-#         except Exception as e:
-#             print(f"Error connecting to Redis: {e}")
-#             exit()
-#     return redis_client
+def get_redis_client():
+    """Initializes and returns the Redis client."""
+    global redis_client
+    if redis_client is None:
+        try:
+            redis_client = redis.Redis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                decode_responses=True,
+                username=REDIS_USERNAME,
+                password=REDIS_PASSWORD,
+            )
+            # Check connection
+            redis_client.ping()
+            print("Successfully connected to Redis!")
+        except Exception as e:
+            print(f"Error connecting to Redis: {e}")
+            exit()
+    return redis_client
 
 # --- Functions to be called from the FastAPI app ---
 def get_db_connection():
@@ -79,9 +79,9 @@ def get_mongo_db():
     client = get_mongo_client()
     return client[MONGO_DB_NAME]
 
-# def get_redis_conn():
-#     """Gets the Redis client instance."""
-#     return get_redis_client()
+def get_redis_conn():
+    """Gets the Redis client instance."""
+    return get_redis_client()
 
 # --- Graceful Shutdown ---
 def close_connections():

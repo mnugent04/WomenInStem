@@ -5,12 +5,13 @@ from fastapi.responses import FileResponse
 import os
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 # --- Database Configuration ---
 # NOTE: Update with your database credential
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
-from database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db
+from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, REDIS_PASSWORD, REDIS_HOST, MONGO_URI
+from database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db, get_redis_conn, \
+    get_redis_client, get_db_connection
 
 # --- Connection Pooling ---
 try:
@@ -168,14 +169,22 @@ class PyObjectId(ObjectId):
             return ObjectId(v)
         raise ValueError("Invalid ObjectId")
 
+# pydantic model for mongodb
+class EventTypeQuery(BaseModel):
+    event_type: str
 
-class EventField(BaseModel):
-    required_items: Optional[str] = None
-    description: Optional[str] = None
+# pydantic models for redis
+class CheckedInStudent(BaseModel):
+    studentId: int
+    firstName: str
+    lastName: str
+    checkInTime: Optional[str] = None
 
-class EventType(BaseModel):
-    event_id: int
-    fields: List[EventField]
+class LiveCheckInSummary(BaseModel):
+    eventId: int
+    count: int
+    students: List[CheckedInStudent]
+    message: str
 
 
 # --- API Endpoints ---
@@ -354,24 +363,100 @@ def get_volunteer_by_id(volunteer_id: int):
             cursor.close()
             cnx.close()
 
-
-@app.get("/event/{event_id}/event_type", response_model=EventType)
-def get_event_types(event_id: int):
+# mongodb!
+@app.get("/event-type/{event_type}")
+def get_event_type(event_type: str):
+    """
+    Fetches a flexible event type definition from MongoDB.
+    Returns raw Mongo documents so the schema can vary per event type.
+    """
     try:
         db = get_mongo_db()
         collection = db["eventTypes"]
 
-        event_type = collection.find_one({"event_id": event_id})
-        if not event_type:
-            raise HTTPException(status_code=404, detail=f"No event type found for event ID: {event_id}")
+        doc = collection.find_one({"event_type": event_type})
 
-        # Convert MongoDB ObjectId to string or remove it
-        event_type["_id"] = str(event_type["_id"])
+        if not doc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No event type found with name '{event_type}'."
+            )
 
-        return event_type
+        # Convert ObjectId → string
+        doc["_id"] = str(doc["_id"])
+
+        return doc
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+# redis!
+@app.get("/event/{eventId}/live-checkins", response_model=LiveCheckInSummary)
+def get_live_checkins(eventId: int):
+    """
+    Retrieves the real-time list of students currently checked in,
+    combining Redis (live check-in state) and MySQL (student details).
+    Mimics the caching pattern from the professor's daily deal example.
+    """
+
+    try:
+        # 1. Connect to Redis
+        r = get_redis_conn()
+
+        checked_in_key = f"event:{eventId}:checkedIn"
+        times_key = f"event:{eventId}:checkInTimes"
+
+        # Fetch all checked-in student IDs
+        student_ids = r.smembers(checked_in_key)
+
+        if not student_ids:
+            raise HTTPException(status_code=404, detail="No students currently checked in.")
+
+        # Fetch timestamps for each student
+        timestamps = r.hgetall(times_key)
+
+        # Convert Redis set of strings → list[int]
+        student_ids_int = [int(sid) for sid in student_ids]
+
+        # 2. Query MySQL for details about these students
+        cnx = get_db_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        format_strings = ",".join(["%s"] * len(student_ids_int))
+        query = f"SELECT ID, FirstName, LastName FROM Person WHERE ID IN ({format_strings});"
+        cursor.execute(query, tuple(student_ids_int))
+        people = cursor.fetchall()
+
+        # 3. Combine MySQL + Redis timestamp info
+        students = []
+        for p in people:
+            sid = p["ID"]
+            students.append(
+                CheckedInStudent(
+                    studentId=sid,
+                    firstName=p["FirstName"],
+                    lastName=p["LastName"],
+                    checkInTime=timestamps.get(str(sid))
+                )
+            )
+
+        return LiveCheckInSummary(
+            eventId=eventId,
+            count=len(students),
+            students=students,
+            message=f"{len(students)} students are currently checked in to event {eventId}."
+        )
+
+    except redis.RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {e}")
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
 
 @app.get("/demo", response_class=FileResponse)
 async def read_demo():

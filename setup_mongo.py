@@ -1,56 +1,65 @@
 from database import get_mongo_db, close_connections
-from datetime import datetime
 
 
 def setup_mongo_data():
     """
-    Connects to MongoDB, clears the 'event_types' collection,
-    and populates it with semantically meaningful, fake bakery review data.
+    Sets up flexible event-types in MongoDB.
     """
     try:
         db = get_mongo_db()
-        event_types_collection = db["eventTypes"]
+        event_types = db["eventTypes"]
 
-        # Clear existing data to ensure a clean slate for the demo
-        print("Clearing existing data from 'event_types' collection...")
-        event_types_collection.delete_many({})
+        print("Clearing eventTypes collection...")
+        event_types.delete_many({})
         print("Collection cleared.")
 
-        # Sample review data linked to product IDs from the MySQL database
-        event_types_data = [
+        sample_types = [
             {
-                "event_id": 1,
-                "fields": [
-                    {
-                        "required_items": "Bible, Pen, Journal",
-                        "description": "Weekly youth group Bible study"
-                    }
-                ]
+                "event_type": "Youth_Night",
+                "required_items": ["Bible", "Journal", "Pen"],
+                "description": "Weekly gathering with teaching, worship, and small groups.",
+                "duration_minutes": 120,
+                "extra_notes": "Pizza provided. Parents pick up at 8:15."
             },
             {
-                "event_id": 2,
-                "fields": [
-                    {
-                        "required_items": "Sleeping bag, Chlothes for 3 days, Toiletries, Pillow, Bible, Flashlight",
-                        "description": "A once a year retreat for all youth group members"
-                    }
-                ]
+                "event_type": "Retreat",
+                "packing_list": [
+                    "Sleeping bag",
+                    "Warm clothes",
+                    "Flashlight",
+                    "Bible",
+                    "Journal"
+                ],
+                "schedule": {
+                    "day1": "Arrival, worship, smores",
+                    "day2": "Hiking, small groups, evening worship",
+                    "day3": "Teaching, communion, worship, send-off"
+                },
+                "forms_required": True,
+                "notes": "Medical release form due by Dec. 4th"
+            },
+            {
+                "event_type": "Service_Day",
+                "locations": ["Food Bank", "Alice Keck Park", "Retirement Home"],
+                "what_to_wear": "Close-toed shoes and work clothes",
+                "bring": ["Water bottle", "Sunscreen"],
+                "partner_orgs": ["SB Food Bank"]
             }
         ]
 
-        # Insert the new data
-        print("Inserting new sample review data...")
-        event_types_collection.insert_many(event_types_data)
-        print(f"{len(event_types_data)} event type documents inserted successfully.")
+        print("Inserting new event type documents...")
+        event_types.insert_many(sample_types)
+
+        print("Event types inserted successfully.")
 
     except Exception as e:
-        print(f"An error occurred during MongoDB setup: {e}")
+        print(f"Mongo setup error: {e}")
+
     finally:
-        # Close the connection
         close_connections()
 
 
 if __name__ == "__main__":
-    print("--- Starting MongoDB Data Setup ---")
+    print("--- Mongo Setup Start ---")
     setup_mongo_data()
-    print("--- MongoDB Data Setup Finished ---")
+    print("--- Mongo Setup Complete ---")

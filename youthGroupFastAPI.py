@@ -368,6 +368,147 @@ def get_volunteer_by_id(volunteer_id: int):
             cnx.close()
 
 
+@app.get("/smallgroups")
+def get_all_small_groups():
+    """
+    Gets all small groups
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup ORDER BY name;")
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.get("/smallgroups/{group_id}")
+def get_small_group(group_id: int):
+    """
+    Gets small group by ID
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup WHERE ID = %s;", (group_id,))
+        group = cursor.fetchone()
+        if not group:
+            raise HTTPException(404, "Small group not found")
+
+        cursor.execute("SELECT COUNT(*) AS memberCount FROM SmallGroupMember WHERE SmallGroupID = %s;", (group_id,))
+        group["memberCount"] = cursor.fetchone()["memberCount"]
+
+        cursor.execute("""
+            SELECT L.ID, P.FirstName, P.LastName 
+            FROM SmallGroupLeader L
+            JOIN Person P ON L.LeaderID = P.ID
+            WHERE SmallGroupID = %s;
+        """, (group_id,))
+        group["leaders"] = cursor.fetchall()
+
+        return group
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.get("/smallgroups/{group_id}/members")
+def get_small_group_members(group_id: int):
+    """
+      Gets members of a small group by ID
+      """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT SGM.ID, P.FirstName, P.LastName 
+            FROM SmallGroupMember SGM
+            JOIN Attendee A ON SGM.AttendeeID = A.PersonID
+            JOIN Person P ON A.PersonID = P.ID
+            WHERE SGM.SmallGroupID = %s;
+        """, (group_id,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.get("/smallgroups/{group_id}/leaders")
+def get_small_group_leaders(group_id: int):
+    """
+      Gets leaders of a small group by ID
+      """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT L.ID, P.FirstName, P.LastName
+            FROM SmallGroupLeader L
+            JOIN Person P ON L.LeaderID = P.ID
+            WHERE L.SmallGroupID = %s;
+        """, (group_id,))
+        return cursor.fetchall()
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.post("/smallgroups/{group_id}/members")
+def add_member_to_group(group_id: int, body: dict):
+    """
+      Adds a member to a small group by ID
+      """
+    attendee_id = body.get("attendeeID")
+    if not attendee_id:
+        raise HTTPException(400, "Missing attendeeID")
+
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+
+        cursor.execute("""
+            INSERT INTO SmallGroupMember (ID, AttendeeID, SmallGroupID)
+            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM SmallGroupMember), %s, %s);
+        """, (attendee_id, group_id))
+        cnx.commit()
+
+        return {"message": "Member added successfully"}
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.post("/smallgroups/{group_id}/leaders")
+def add_leader_to_group(group_id: int, body: dict):
+    """
+      Adds a leader to a small group
+      """
+    leader_id = body.get("leaderID")
+    if not leader_id:
+        raise HTTPException(400, "Missing leaderID")
+
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+
+        cursor.execute("""
+            INSERT INTO SmallGroupLeader (ID, LeaderID, SmallGroupID)
+            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM SmallGroupLeader), %s, %s);
+        """, (leader_id, group_id))
+        cnx.commit()
+
+        return {"message": "Leader added successfully"}
+    finally:
+        cursor.close()
+        cnx.close()
+
+
 # mongodb!
 @app.get("/event-type/{event_type}")
 def get_event_type(event_type: str):

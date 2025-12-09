@@ -1,0 +1,102 @@
+### add note
+POST http://localhost:8099/persons/1/notes
+Content-Type: application/json
+
+{
+  "text": "First note",
+  "createdBy": 1
+}
+
+### get notes
+GET http://localhost:8099/persons/1/notes
+
+### update note
+PATCH http://localhost:8099/notes/693870c535b4807b44add478
+Content-Type: application/json
+
+{
+  "text": "Updated text"
+}
+
+###
+
+GET http://localhost:8099/persons/1/notes
+
+###
+
+DELETE http://localhost:8099/notes/693870c535b4807b44add478
+
+###
+
+POST http://localhost:8099/persons/1/parent-contacts
+Content-Type: application/json
+
+{
+  "summary": "Called mom about retreat",
+  "method": "phone",
+  "createdBy": 2
+}
+
+###
+
+GET http://localhost:8099/persons/1/parent-contacts
+
+###
+
+PATCH http://localhost:8099/parent-contacts/693871ab35b4807b44add479
+Content-Type: application/json
+
+{
+  "summary": "Called mom about retreat forms and got confirmation"
+}
+
+###
+
+GET http://localhost:8099/persons/1/parent-contacts
+
+###
+
+DELETE http://localhost:8099/parent-contacts/693871ab35b4807b44add479
+
+###
+
+GET http://localhost:8099/persons/1/parent-contacts
+
+###
+
+POST http://localhost:8099/events/3/highlights
+Content-Type: application/json
+
+{
+  "highlights": "Students were very engaged tonight",
+  "studentWins": "Bella invited a friend",
+  "createdBy": 2
+}
+
+###
+
+GET http://localhost:8099/events/3/highlights
+
+###
+
+PATCH http://localhost:8099/highlights/6938725935b4807b44add47a
+Content-Type: application/json
+
+{
+  "highlights": "Students were engaged and asked good questions"
+}
+
+###
+
+GET http://localhost:8099/events/3/highlights
+
+###
+
+DELETE http://localhost:8099/highlights/6938725935b4807b44add47a
+
+###
+
+GET http://localhost:8099/events/3/highlights
+
+###
+

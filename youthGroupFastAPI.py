@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict
 
+
 # --- Database Configuration ---
 # NOTE: Update with your database credential
 from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, \
@@ -535,6 +536,203 @@ def get_event_type(event_type: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+# mongo db notes for person
+@app.get("/persons/{person_id}/notes")
+def get_notes_for_person(person_id: int):
+    """
+    Gets all notes for a specific person from MongoDB. Includes timestamp and category.
+    """
+    db = get_mongo_db()
+    notes = list(db["personNotes"].find({"personId": person_id}))
+    for note in notes:
+        note["_id"] = str(note["_id"])
+    return notes
+
+@app.post("/persons/{person_id}/notes")
+def add_note_to_person(person_id: int, body: dict):
+    """
+    Adds a new note for a specific person. Stores flexible fields in Mongo.
+    """
+
+    db = get_mongo_db()
+
+    if "text" not in body:
+        raise HTTPException(400, "text is required")
+
+    note = {
+        "personId": person_id,
+        "text": body["text"],
+        "category": body.get("category"),
+        "createdBy": body.get("createdBy"),
+        "created": datetime.utcnow(),
+    }
+
+    result = db["personNotes"].insert_one(note)
+    return {"id": str(result.inserted_id)}
+
+@app.patch("/notes/{note_id}")
+def update_note_by_id(note_id: str, body: dict):
+    """
+    Updates an existing note by its id. Adds an updated timestamp.
+    """
+    db = get_mongo_db()
+
+    body["updated"] = datetime.utcnow()
+
+    updated = db["personNotes"].update_one(
+        {"_id": ObjectId(note_id)},
+        {"$set": body}
+    )
+
+    if updated.matched_count == 0:
+        raise HTTPException(404, "Note not found")
+
+    return {"message": "Note updated"}
+
+@app.delete("/notes/{note_id}")
+def delete_note_by_id(note_id: str):
+    db = get_mongo_db()
+
+    deleted = db["personNotes"].delete_one({"_id": ObjectId(note_id)})
+
+    if deleted.deleted_count == 0:
+        raise HTTPException(404, "Note not found")
+
+    return {"message": "Note deleted"}
+
+# parent contacts mongo_db
+@app.get("/persons/{person_id}/parent-contacts")
+def get_parent_contacts(person_id: int):
+    """
+    Gets all parent contacts for a specific person from Mongo.
+    """
+    db = get_mongo_db()
+    contacts = list(db["parentContacts"].find({"personId": person_id}))
+    for c in contacts:
+        c["_id"] = str(c["_id"])
+    return contacts
+
+@app.post("/persons/{person_id}/parent-contacts")
+def add_parent_contact(person_id: int, body: dict):
+    """
+    Adds a new parent contact entry for a specific person.
+    """
+    db = get_mongo_db()
+
+    if "summary" not in body:
+        raise HTTPException(400, "summary is required")
+
+    contact = {
+        "personId": person_id,
+        "method": body.get("method"),
+        "summary": body["summary"],
+        "date": body.get("date"),  # optional date they contacted you
+        "createdBy": body.get("createdBy"),
+        "created": datetime.utcnow(),
+    }
+
+    result = db["parentContacts"].insert_one(contact)
+    return {"id": str(result.inserted_id)}
+
+@app.patch("/parent-contacts/{contact_id}")
+def update_parent_contact(contact_id: str, body: dict):
+    """
+    Updates a parent contact by id. Adds updated timestamp.
+    """
+    db = get_mongo_db()
+
+    body["updated"] = datetime.utcnow()
+
+    updated = db["parentContacts"].update_one(
+        {"_id": ObjectId(contact_id)},
+        {"$set": body}
+    )
+
+    if updated.matched_count == 0:
+        raise HTTPException(404, "Parent contact not found")
+
+    return {"message": "Parent contact updated"}
+
+@app.delete("/parent-contacts/{contact_id}")
+def delete_parent_contact(contact_id: str):
+    """
+    Deletes a parent contact by id.
+    """
+    db = get_mongo_db()
+
+    deleted = db["parentContacts"].delete_one({"_id": ObjectId(contact_id)})
+
+    if deleted.deleted_count == 0:
+        raise HTTPException(404, "Parent contact not found")
+
+    return {"message": "Parent contact deleted"}
+
+# event highlights mong_db
+@app.get("/events/{event_id}/highlights")
+def get_event_highlights(event_id: int):
+    """
+    Gets all highlight entries for a specific event.
+    """
+    db = get_mongo_db()
+    highlights = list(db["eventHighlights"].find({"eventId": event_id}))
+    for h in highlights:
+        h["_id"] = str(h["_id"])
+    return highlights
+
+@app.post("/events/{event_id}/highlights")
+def add_event_highlight(event_id: int, body: dict):
+    """
+    Adds a new highlight entry for a specific event.
+    """
+    db = get_mongo_db()
+
+    if "highlights" not in body:
+        raise HTTPException(400, "highlights field is required")
+
+    highlight = {
+        "eventId": event_id,
+        "highlights": body.get("highlights"),
+        "concerns": body.get("concerns"),
+        "studentWins": body.get("studentWins"),
+        "createdBy": body.get("createdBy"),
+        "created": datetime.utcnow(),
+    }
+
+    result = db["eventHighlights"].insert_one(highlight)
+    return {"id": str(result.inserted_id)}
+
+@app.patch("/highlights/{highlight_id}")
+def update_event_highlight(highlight_id: str, body: dict):
+    """
+    Updates an event highlight entry. Adds updated timestamp.
+    """
+    db = get_mongo_db()
+    body["updated"] = datetime.utcnow()
+
+    updated = db["eventHighlights"].update_one(
+        {"_id": ObjectId(highlight_id)},
+        {"$set": body}
+    )
+
+    if updated.matched_count == 0:
+        raise HTTPException(404, "Event highlight not found")
+
+    return {"message": "Highlight updated"}
+
+@app.delete("/highlights/{highlight_id}")
+def delete_event_highlight(highlight_id: str):
+    """
+    Deletes an event highlight entry by id.
+    """
+    db = get_mongo_db()
+
+    deleted = db["eventHighlights"].delete_one({"_id": ObjectId(highlight_id)})
+
+    if deleted.deleted_count == 0:
+        raise HTTPException(404, "Event highlight not found")
+
+    return {"message": "Highlight deleted"}
 
 
 # redis!

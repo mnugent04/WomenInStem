@@ -318,6 +318,109 @@ def delete_person(person_id: int):
             cursor.close()
             cnx.close()
 
+#registrations:
+@app.get("/events/{event_id}/registrations")
+def get_registrations_for_event(event_id: int):
+    """
+    Gets all registrations for an event, including person names.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        query = """
+            SELECT R.ID AS id,
+                   R.EventID AS eventId,
+                   R.AttendeeID AS attendeeId,
+                   R.LeaderID AS leaderId,
+                   R.EmergencyContact AS emergencyContact,
+                   P.FirstName AS firstName,
+                   P.LastName AS lastName
+            FROM Registration R
+            LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+            LEFT JOIN Leader L ON R.LeaderID = L.ID
+            LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID)
+            WHERE R.EventID = %s;
+        """
+
+        cursor.execute(query, (event_id,))
+        return cursor.fetchall()
+
+    except mysql.connector.Error as err:
+        raise HTTPException(500, f"DB error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+# register for an event:
+@app.post("/events/{event_id}/registrations")
+def register_for_event(event_id: int, body: dict):
+    """
+    Registers either an attendee or leader for an event.
+    """
+    attendee_id = body.get("attendeeID")
+    leader_id = body.get("leaderID")
+    emergency_contact = body.get("emergencyContact")
+
+    if not attendee_id and not leader_id:
+        raise HTTPException(400, "Must include attendeeID or leaderID")
+
+    if not emergency_contact:
+        raise HTTPException(400, "Missing emergencyContact")
+
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+
+        # 1. Get next ID first
+        cursor.execute("SELECT IFNULL(MAX(ID),0) + 1 AS nextId FROM Registration;")
+        next_id = cursor.fetchone()[0]
+
+        # 2. Now insert using that ID
+        insert_query = """
+            INSERT INTO Registration (ID, EventID, AttendeeID, LeaderID, EmergencyContact)
+            VALUES (%s, %s, %s, %s, %s);
+        """
+
+        cursor.execute(insert_query, (next_id, event_id, attendee_id, leader_id, emergency_contact))
+        cnx.commit()
+
+        return {"message": "Registration created successfully", "id": next_id}
+
+    except mysql.connector.Error as err:
+        raise HTTPException(500, f"DB error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+# delete registration:
+@app.delete("/registrations/{registration_id}")
+def delete_registration(registration_id: int):
+    """
+    Deletes a registration record by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+
+        cursor.execute("SELECT ID FROM Registration WHERE ID = %s;", (registration_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Registration not found")
+
+        cursor.execute("DELETE FROM Registration WHERE ID = %s;", (registration_id,))
+        cnx.commit()
+
+        return {"message": "Registration deleted successfully"}
+
+    except mysql.connector.Error as err:
+        raise HTTPException(500, f"DB error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
 
 @app.get("/volunteers")
 def get_all_volunteers():
@@ -669,70 +772,70 @@ def delete_parent_contact(contact_id: str):
     return {"message": "Parent contact deleted"}
 
 # event highlights mong_db
-@app.get("/events/{event_id}/highlights")
-def get_event_highlights(event_id: int):
+@app.get("/events/{event_id}/notes")
+def get_event_notes(event_id: int):
     """
     Gets all highlight entries for a specific event.
     """
     db = get_mongo_db()
-    highlights = list(db["eventHighlights"].find({"eventId": event_id}))
-    for h in highlights:
-        h["_id"] = str(h["_id"])
-    return highlights
+    notes = list(db["eventNotes"].find({"eventId": event_id}))
+    for n in notes:
+        n["_id"] = str(n["_id"])
+    return notes
 
-@app.post("/events/{event_id}/highlights")
-def add_event_highlight(event_id: int, body: dict):
+@app.post("/events/{event_id}/notes")
+def add_event_notes(event_id: int, body: dict):
     """
     Adds a new highlight entry for a specific event.
     """
     db = get_mongo_db()
 
-    if "highlights" not in body:
-        raise HTTPException(400, "highlights field is required")
+    if "notes" not in body:
+        raise HTTPException(400, "notes field is required")
 
-    highlight = {
+    note = {
         "eventId": event_id,
-        "highlights": body.get("highlights"),
+        "notes": body.get("notes"),
         "concerns": body.get("concerns"),
         "studentWins": body.get("studentWins"),
         "createdBy": body.get("createdBy"),
         "created": datetime.utcnow(),
     }
 
-    result = db["eventHighlights"].insert_one(highlight)
+    result = db["eventNotes"].insert_one(note)
     return {"id": str(result.inserted_id)}
 
-@app.patch("/highlights/{highlight_id}")
-def update_event_highlight(highlight_id: str, body: dict):
+@app.patch("/event/{note_id}")
+def update_event_note(note_id: str, body: dict):
     """
     Updates an event highlight entry. Adds updated timestamp.
     """
     db = get_mongo_db()
     body["updated"] = datetime.utcnow()
 
-    updated = db["eventHighlights"].update_one(
-        {"_id": ObjectId(highlight_id)},
+    updated = db["eventNotes"].update_one(
+        {"_id": ObjectId(note_id)},
         {"$set": body}
     )
 
     if updated.matched_count == 0:
-        raise HTTPException(404, "Event highlight not found")
+        raise HTTPException(404, "Event note not found")
 
-    return {"message": "Highlight updated"}
+    return {"message": "Note updated"}
 
-@app.delete("/highlights/{highlight_id}")
-def delete_event_highlight(highlight_id: str):
+@app.delete("/notes/{note_id}")
+def delete_event_note(note_id: str):
     """
     Deletes an event highlight entry by id.
     """
     db = get_mongo_db()
 
-    deleted = db["eventHighlights"].delete_one({"_id": ObjectId(highlight_id)})
+    deleted = db["eventNotes"].delete_one({"_id": ObjectId(note_id)})
 
     if deleted.deleted_count == 0:
-        raise HTTPException(404, "Event highlight not found")
+        raise HTTPException(404, "Event note not found")
 
-    return {"message": "Highlight deleted"}
+    return {"message": "Note deleted"}
 
 
 # redis!

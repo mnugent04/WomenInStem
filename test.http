@@ -100,3 +100,17 @@ GET http://localhost:8099/events/3/highlights
 
 ###
 
+POST http://localhost:8099/events/3/registrations
+Content-Type: application/json
+
+{
+  "attendeeID": 1,
+  "emergencyContact": "Mom 805-123-4567"
+}
+
+###
+
+GET http://localhost:8099/events/3/registrations
+
+###
+

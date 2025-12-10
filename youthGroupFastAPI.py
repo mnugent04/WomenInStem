@@ -6,6 +6,8 @@ import os
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict
+from datetime import datetime
+
 
 # --- Database Configuration ---
 # NOTE: Update with your database credential
@@ -115,7 +117,7 @@ class Event(BaseModel):
     id: int
     name: str
     type: str
-    dateTime: str
+    dateTime: datetime
     location: str
     notes: str | None
 
@@ -136,7 +138,7 @@ class AttendanceRecord(BaseModel):
 class EventCreate(BaseModel):
     name: str
     type: str
-    dateTime: str
+    dateTime: datetime
     location: str
     notes: str | None = None
 
@@ -251,26 +253,36 @@ def get_person_by_id(person_id: int):
 @app.post("/people", response_model=Person, status_code=201)
 def create_person(person: PersonCreate):
     """
-    Creates a person.
+    creates a person
     """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+
         insert_query = """
-            INSERT INTO Person (ID, FirstName, LastName, Age)
-            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM Person), %s, %s, %s);
+            INSERT INTO Person (FirstName, LastName, Age)
+            VALUES (%s, %s, %s)
         """
         cursor.execute(insert_query, (person.firstName, person.lastName, person.age))
         cnx.commit()
-        cursor.execute("SELECT ID AS id, FirstName, LastName, Age FROM Person ORDER BY ID DESC LIMIT 1;")
+
+        person_id = cursor.lastrowid
+
+        cursor.execute(
+            "SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person WHERE ID = %s",
+            (person_id,)
+        )
         new_person = cursor.fetchone()
         return new_person
+
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
+
     finally:
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
 
 
 @app.put("/people/{person_id}", response_model=Person)
@@ -677,6 +689,8 @@ def add_leader_to_group(group_id: int, body: dict):
         cnx.close()
 
 
+from datetime import datetime
+
 @app.post("/events", response_model=Event, status_code=201)
 def create_event(event: EventCreate):
     try:
@@ -684,22 +698,19 @@ def create_event(event: EventCreate):
         cursor = cnx.cursor(dictionary=True)
 
         insert_query = """
-            INSERT INTO Event (ID, Name, Type, DateTime, Location, Notes)
-            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM Event), %s, %s, %s, %s, %s);
+            INSERT INTO Event (Name, Type, DateTime, Location, Notes)
+            VALUES (%s, %s, %s, %s, %s)
         """
-
-        cursor.execute(insert_query, (
-            event.name,
-            event.type,
-            event.dateTime,
-            event.location,
-            event.notes
-        ))
-
+        cursor.execute(
+            insert_query,
+            (event.name, event.type, event.dateTime, event.location, event.notes)
+        )
         cnx.commit()
 
-        # Retrieve last inserted event
-        cursor.execute("""
+        event_id = cursor.lastrowid
+
+        cursor.execute(
+            """
             SELECT
                 ID AS id,
                 Name AS name,
@@ -708,18 +719,25 @@ def create_event(event: EventCreate):
                 Location AS location,
                 Notes AS notes
             FROM Event
-            ORDER BY ID DESC LIMIT 1;
-        """)
+            WHERE ID = %s
+            """,
+            (event_id,),
+        )
 
         new_event = cursor.fetchone()
+
         return new_event
 
     except mysql.connector.Error as err:
+        # This is what becomes the 500 you see in the frontend
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        cursor.close()
-        cnx.close()
+        if "cnx" in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
 
 
 @app.get("/events/upcoming")

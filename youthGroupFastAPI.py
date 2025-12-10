@@ -667,6 +667,62 @@ def create_event(event: EventCreate):
         cnx.close()
 
 
+@app.get("/events/upcoming")
+def get_upcoming_events():
+    """
+    Returns all events whose datetime is in the future.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT ID AS id, Name AS name, Type AS type,
+                   DateTime AS dateTime, Location AS location, Notes AS notes
+            FROM Event
+            WHERE DateTime >= NOW()
+            ORDER BY DateTime;
+        """)
+
+        return cursor.fetchall()
+
+    except mysql.connector.Error as err:
+        raise HTTPException(500, f"DB error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.get("/events/{event_id}")
+def get_event_by_id(event_id: int):
+    """
+    Returns a single event by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT ID AS id, Name AS name, Type AS type,
+                   DateTime AS dateTime, Location AS location, Notes AS notes
+            FROM Event
+            WHERE ID = %s;
+        """, (event_id,))
+
+        event = cursor.fetchone()
+        if not event:
+            raise HTTPException(404, "Event not found")
+
+        return event
+
+    except mysql.connector.Error as err:
+        raise HTTPException(500, f"DB error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
 @app.get("/events", response_model=list[Event])
 def get_all_events():
     try:

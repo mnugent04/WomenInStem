@@ -57,23 +57,35 @@ function Events() {
 
   const handleSave = (eventData) => {
     if (eventData.id) {
-      // Update - Note: Backend doesn't have PUT endpoint, so we'll need to add it or use POST
-      // For now, we'll just create new events
-      console.warn('Event update not yet implemented in backend');
+      // UPDATE
+      const { id, ...updateData } = eventData; // remove id from the body
+
+      api.patch(`/events/${id}`, updateData)
+          .then(response => {
+            setEditingEvent(null);
+            fetchEvents();  // refresh the list
+          })
+          .catch(error => {
+            console.error('Error updating event:', error);
+            setError(error);
+          });
+
     } else {
-      // Create
+      // CREATE
       const { id, ...createData } = eventData;
+
       api.post('/events', createData)
-        .then(response => {
-          setEditingEvent(null);
-          fetchEvents();
-        })
-        .catch(error => {
-          console.error('Error creating event:', error);
-          setError(error);
-        });
+          .then(response => {
+            setEditingEvent(null);
+            fetchEvents();
+          })
+          .catch(error => {
+            console.error('Error creating event:', error);
+            setError(error);
+          });
     }
   };
+
 
   const handleCancel = () => {
     setEditingEvent(null);

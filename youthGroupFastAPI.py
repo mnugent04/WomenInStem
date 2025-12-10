@@ -142,6 +142,14 @@ class EventCreate(BaseModel):
     location: str
     notes: str | None = None
 
+class EventUpdate(BaseModel):
+    name: str | None = None
+    type: str | None = None
+    dateTime: datetime | None = None
+    location: str | None = None
+    notes: str | None = None
+
+
 
 # --- Pydantic Models for MongoDB Data ---
 from typing import List, Optional, Any
@@ -304,7 +312,7 @@ def update_person(person_id: int, person: PersonCreate):
         """
         cursor.execute(update_query, (person.firstName, person.lastName, person.age, person_id))
         cnx.commit()
-        cursor.execute("SELECT ID AS id, FirstName, LastName, Age FROM Person WHERE ID = %s;", (person_id,))
+        cursor.execute("SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person WHERE ID = %s;", (person_id,))
         updated = cursor.fetchone()
         return updated
     except mysql.connector.Error as err:
@@ -737,6 +745,77 @@ def create_event(event: EventCreate):
             cursor.close()
             cnx.close()
 
+@app.patch("/events/{event_id}", response_model=Event)
+def update_event(event_id: int, event: EventUpdate):
+    """
+    Update an event partially.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        # Build dynamic update list
+        fields = []
+        values = []
+
+        if event.name is not None:
+            fields.append("Name = %s")
+            values.append(event.name)
+
+        if event.type is not None:
+            fields.append("Type = %s")
+            values.append(event.type)
+
+        if event.dateTime is not None:
+            fields.append("DateTime = %s")
+            values.append(event.dateTime)
+
+        if event.location is not None:
+            fields.append("Location = %s")
+            values.append(event.location)
+
+        if event.notes is not None:
+            fields.append("Notes = %s")
+            values.append(event.notes)
+
+        # If nothing to update
+        if not fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        sql = f"UPDATE Event SET {', '.join(fields)} WHERE ID = %s"
+        values.append(event_id)       # last param is event_id
+        cursor.execute(sql, values)
+        cnx.commit()
+
+        # Return the updated row
+        cursor.execute(
+            """
+            SELECT
+                ID AS id,
+                Name AS name,
+                Type AS type,
+                DateTime AS dateTime,
+                Location AS location,
+                Notes AS notes
+            FROM Event
+            WHERE ID = %s
+            """,
+            (event_id,),
+        )
+        updated = cursor.fetchone()
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        return updated
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+
+    finally:
+        if "cnx" in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
 
 
 

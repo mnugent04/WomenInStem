@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict
 
-
 # --- Database Configuration ---
 # NOTE: Update with your database credential
 from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, \
@@ -133,6 +132,13 @@ class AttendanceRecord(BaseModel):
     id: int
     personID: int
     eventID: int
+
+class EventCreate(BaseModel):
+    name: str
+    type: str
+    dateTime: str
+    location: str
+    notes: str | None = None
 
 
 # --- Pydantic Models for MongoDB Data ---
@@ -318,7 +324,8 @@ def delete_person(person_id: int):
             cursor.close()
             cnx.close()
 
-#registrations:
+
+# registrations:
 @app.get("/events/{event_id}/registrations")
 def get_registrations_for_event(event_id: int):
     """
@@ -352,6 +359,7 @@ def get_registrations_for_event(event_id: int):
     finally:
         cursor.close()
         cnx.close()
+
 
 # register for an event:
 @app.post("/events/{event_id}/registrations")
@@ -394,6 +402,7 @@ def register_for_event(event_id: int, body: dict):
     finally:
         cursor.close()
         cnx.close()
+
 
 # delete registration:
 @app.delete("/registrations/{registration_id}")
@@ -613,6 +622,79 @@ def add_leader_to_group(group_id: int, body: dict):
         cnx.close()
 
 
+@app.post("/events", response_model=Event, status_code=201)
+def create_event(event: EventCreate):
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        insert_query = """
+            INSERT INTO Event (ID, Name, Type, DateTime, Location, Notes)
+            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM Event), %s, %s, %s, %s, %s);
+        """
+
+        cursor.execute(insert_query, (
+            event.name,
+            event.type,
+            event.dateTime,
+            event.location,
+            event.notes
+        ))
+
+        cnx.commit()
+
+        # Retrieve last inserted event
+        cursor.execute("""
+            SELECT
+                ID AS id,
+                Name AS name,
+                Type AS type,
+                DateTime AS dateTime,
+                Location AS location,
+                Notes AS notes
+            FROM Event
+            ORDER BY ID DESC LIMIT 1;
+        """)
+
+        new_event = cursor.fetchone()
+        return new_event
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+@app.get("/events", response_model=list[Event])
+def get_all_events():
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT 
+                ID AS id,
+                Name AS name,
+                Type AS type,
+                DATE_FORMAT(DateTime, '%Y-%m-%d %H:%i:%s') AS dateTime,
+                Location AS location,
+                Notes AS notes
+            FROM Event
+            ORDER BY DateTime DESC;
+        """)
+
+        return cursor.fetchall()
+
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
 # mongodb!
 @app.get("/event-type/{event_type}")
 def get_event_type(event_type: str):
@@ -640,6 +722,7 @@ def get_event_type(event_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
 
+
 # mongo db notes for person
 @app.get("/persons/{person_id}/notes")
 def get_notes_for_person(person_id: int):
@@ -651,6 +734,7 @@ def get_notes_for_person(person_id: int):
     for note in notes:
         note["_id"] = str(note["_id"])
     return notes
+
 
 @app.post("/persons/{person_id}/notes")
 def add_note_to_person(person_id: int, body: dict):
@@ -674,6 +758,7 @@ def add_note_to_person(person_id: int, body: dict):
     result = db["personNotes"].insert_one(note)
     return {"id": str(result.inserted_id)}
 
+
 @app.patch("/notes/{note_id}")
 def update_note_by_id(note_id: str, body: dict):
     """
@@ -693,6 +778,7 @@ def update_note_by_id(note_id: str, body: dict):
 
     return {"message": "Note updated"}
 
+
 @app.delete("/notes/{note_id}")
 def delete_note_by_id(note_id: str):
     db = get_mongo_db()
@@ -703,6 +789,7 @@ def delete_note_by_id(note_id: str):
         raise HTTPException(404, "Note not found")
 
     return {"message": "Note deleted"}
+
 
 # parent contacts mongo_db
 @app.get("/persons/{person_id}/parent-contacts")
@@ -715,6 +802,7 @@ def get_parent_contacts(person_id: int):
     for c in contacts:
         c["_id"] = str(c["_id"])
     return contacts
+
 
 @app.post("/persons/{person_id}/parent-contacts")
 def add_parent_contact(person_id: int, body: dict):
@@ -738,6 +826,7 @@ def add_parent_contact(person_id: int, body: dict):
     result = db["parentContacts"].insert_one(contact)
     return {"id": str(result.inserted_id)}
 
+
 @app.patch("/parent-contacts/{contact_id}")
 def update_parent_contact(contact_id: str, body: dict):
     """
@@ -757,6 +846,7 @@ def update_parent_contact(contact_id: str, body: dict):
 
     return {"message": "Parent contact updated"}
 
+
 @app.delete("/parent-contacts/{contact_id}")
 def delete_parent_contact(contact_id: str):
     """
@@ -771,6 +861,7 @@ def delete_parent_contact(contact_id: str):
 
     return {"message": "Parent contact deleted"}
 
+
 # event highlights mong_db
 @app.get("/events/{event_id}/notes")
 def get_event_notes(event_id: int):
@@ -782,6 +873,7 @@ def get_event_notes(event_id: int):
     for n in notes:
         n["_id"] = str(n["_id"])
     return notes
+
 
 @app.post("/events/{event_id}/notes")
 def add_event_notes(event_id: int, body: dict):
@@ -805,6 +897,7 @@ def add_event_notes(event_id: int, body: dict):
     result = db["eventNotes"].insert_one(note)
     return {"id": str(result.inserted_id)}
 
+
 @app.patch("/event/{note_id}")
 def update_event_note(note_id: str, body: dict):
     """
@@ -822,6 +915,7 @@ def update_event_note(note_id: str, body: dict):
         raise HTTPException(404, "Event note not found")
 
     return {"message": "Note updated"}
+
 
 @app.delete("/notes/{note_id}")
 def delete_event_note(note_id: str):

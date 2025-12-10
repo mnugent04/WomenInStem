@@ -1307,12 +1307,30 @@ def get_comprehensive_event_summary(event_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+    # close cursor safely
+        try:
             cursor.close()
+        except:
+            pass
+
+    # close main DB connection safely
+        try:
             cnx.close()
-        if 'cnx2' in locals() and cnx2.is_connected():
+        except:
+            pass
+
+    # close 2nd cursor safely (Redis/MySQL join)
+        try:
             cursor2.close()
+        except:
+            pass
+
+        # close 2nd DB connection safely
+        try:
             cnx2.close()
+        except:
+            pass
+
 
 
 @app.get("/events/{event_id}")

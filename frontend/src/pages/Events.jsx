@@ -3,7 +3,7 @@ import EventList from '../components/EventList';
 import EventForm from '../components/EventForm';
 import RegistrationForm from '../components/RegistrationForm';
 import api from '../services/api';
-
+import EventComprehensive from "../components/EventComprehensive.jsx";
 function Events() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,7 +13,8 @@ function Events() {
   const [loadingRegistrations, setLoadingRegistrations] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [registeringForEventId, setRegisteringForEventId] = useState(null);
-
+  const [eventSummary, setEventSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
   const fetchEvents = () => {
     setLoading(true);
     api.get('/events')
@@ -32,28 +33,42 @@ function Events() {
   }, []);
 
   const handleEventClick = async (eventId) => {
-    // If clicking the same event, collapse it
     if (expandedEventId === eventId) {
       setExpandedEventId(null);
       setEventRegistrations(null);
+      setEventSummary(null);
       return;
     }
 
-    // Expand the clicked event
     setExpandedEventId(eventId);
     setLoadingRegistrations(true);
+    setLoadingSummary(true);
     setEventRegistrations(null);
+    setEventSummary(null);
 
     try {
-      const response = await api.get(`/events/${eventId}/registrations`);
-      setEventRegistrations(response.data);
+      // Fetch registrations
+      const regResponse = await api.get(`/events/${eventId}/registrations`);
+      setEventRegistrations(regResponse.data);
     } catch (error) {
-      console.error('Error fetching event registrations:', error);
+      console.error("Error fetching event registrations:", error);
       setError(error);
     } finally {
       setLoadingRegistrations(false);
     }
+
+    try {
+      // Fetch comprehensive summary
+      const summaryResponse = await api.get(`/events/${eventId}/comprehensive`);
+      setEventSummary(summaryResponse.data);
+    } catch (error) {
+      console.error("Error fetching summary:", error);
+      setError(error);
+    } finally {
+      setLoadingSummary(false);
+    }
   };
+
 
   const handleSave = (eventData) => {
     if (eventData.id) {
@@ -142,6 +157,11 @@ function Events() {
       />
       {loadingRegistrations && expandedEventId && (
         <div style={{ marginTop: '1rem', fontStyle: 'italic' }}>Loading registrations...</div>
+      )}
+      {expandedEventId && (
+          <div style={{ marginTop: '2rem' }}>
+            <EventComprehensive eventId={expandedEventId} />
+          </div>
       )}
     </div>
   );

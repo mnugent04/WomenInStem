@@ -3,6 +3,7 @@ import PersonList from '../components/PersonList';
 import PersonForm from '../components/PersonForm';
 import PersonNotes from '../components/PersonNotes';
 import PersonParentContacts from '../components/PersonParentContacts';
+import PersonRoles from '../components/PersonRoles';
 import api from '../services/api';
 
 function People() {
@@ -102,6 +103,7 @@ function People() {
             </div>
             <p>Age: {viewingPerson.age || 'N/A'}</p>
           </header>
+          <PersonRoles personId={viewingPerson.id} onUpdate={fetchPeople} />
           <PersonNotes personId={viewingPerson.id} />
           <PersonParentContacts personId={viewingPerson.id} />
         </article>

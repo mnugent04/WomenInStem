@@ -1,4 +1,5 @@
 import mysql.connector
+import redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
@@ -355,22 +356,44 @@ def get_registrations_for_event(event_id: int):
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
 
-        query = """
-            SELECT R.ID AS id,
-                   R.EventID AS eventId,
-                   R.AttendeeID AS attendeeId,
-                   R.LeaderID AS leaderId,
-                   R.EmergencyContact AS emergencyContact,
-                   P.FirstName AS firstName,
-                   P.LastName AS lastName
-            FROM Registration R
-            LEFT JOIN Attendee A ON R.AttendeeID = A.ID
-            LEFT JOIN Leader L ON R.LeaderID = L.ID
-            LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID)
-            WHERE R.EventID = %s;
-        """
-
-        cursor.execute(query, (event_id,))
+        # Try to include VolunteerID, fallback if column doesn't exist
+        try:
+            query = """
+                SELECT R.ID AS id,
+                       R.EventID AS eventId,
+                       R.AttendeeID AS attendeeId,
+                       R.LeaderID AS leaderId,
+                       R.VolunteerID AS volunteerId,
+                       R.EmergencyContact AS emergencyContact,
+                       P.FirstName AS firstName,
+                       P.LastName AS lastName
+                FROM Registration R
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                LEFT JOIN Volunteer V ON R.VolunteerID = V.ID
+                LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID OR V.PersonID = P.ID)
+                WHERE R.EventID = %s;
+            """
+            cursor.execute(query, (event_id,))
+        except mysql.connector.Error:
+            # Fallback if VolunteerID column doesn't exist
+            query = """
+                SELECT R.ID AS id,
+                       R.EventID AS eventId,
+                       R.AttendeeID AS attendeeId,
+                       R.LeaderID AS leaderId,
+                       NULL AS volunteerId,
+                       R.EmergencyContact AS emergencyContact,
+                       P.FirstName AS firstName,
+                       P.LastName AS lastName
+                FROM Registration R
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID)
+                WHERE R.EventID = %s;
+            """
+            cursor.execute(query, (event_id,))
+        
         return cursor.fetchall()
 
     except mysql.connector.Error as err:
@@ -385,14 +408,15 @@ def get_registrations_for_event(event_id: int):
 @app.post("/events/{event_id}/registrations")
 def register_for_event(event_id: int, body: dict):
     """
-    Registers either an attendee or leader for an event.
+    Registers either an attendee, leader, or volunteer for an event.
     """
     attendee_id = body.get("attendeeID")
     leader_id = body.get("leaderID")
+    volunteer_id = body.get("volunteerID")
     emergency_contact = body.get("emergencyContact")
 
-    if not attendee_id and not leader_id:
-        raise HTTPException(400, "Must include attendeeID or leaderID")
+    if not attendee_id and not leader_id and not volunteer_id:
+        raise HTTPException(400, "Must include attendeeID, leaderID, or volunteerID")
 
     if not emergency_contact:
         raise HTTPException(400, "Missing emergencyContact")
@@ -405,13 +429,27 @@ def register_for_event(event_id: int, body: dict):
         cursor.execute("SELECT IFNULL(MAX(ID),0) + 1 AS nextId FROM Registration;")
         next_id = cursor.fetchone()[0]
 
-        # 2. Now insert using that ID
-        insert_query = """
-            INSERT INTO Registration (ID, EventID, AttendeeID, LeaderID, EmergencyContact)
-            VALUES (%s, %s, %s, %s, %s);
-        """
-
-        cursor.execute(insert_query, (next_id, event_id, attendee_id, leader_id, emergency_contact))
+        # 2. Try to insert with VolunteerID if volunteer_id is provided
+        if volunteer_id:
+            try:
+                insert_query = """
+                    INSERT INTO Registration (ID, EventID, AttendeeID, LeaderID, VolunteerID, EmergencyContact)
+                    VALUES (%s, %s, %s, %s, %s, %s);
+                """
+                cursor.execute(insert_query, (next_id, event_id, attendee_id, leader_id, volunteer_id, emergency_contact))
+            except mysql.connector.Error as err:
+                # If VolunteerID column doesn't exist, raise a helpful error
+                if "Unknown column 'VolunteerID'" in str(err) or "1054" in str(err):
+                    raise HTTPException(400, "Volunteer registration requires VolunteerID column in Registration table. Please run the migration script.")
+                raise
+        else:
+            # Regular attendee/leader registration
+            insert_query = """
+                INSERT INTO Registration (ID, EventID, AttendeeID, LeaderID, EmergencyContact)
+                VALUES (%s, %s, %s, %s, %s);
+            """
+            cursor.execute(insert_query, (next_id, event_id, attendee_id, leader_id, emergency_contact))
+        
         cnx.commit()
 
         return {"message": "Registration created successfully", "id": next_id}
@@ -548,6 +586,250 @@ def get_all_leaders():
         """)
         leaders = cursor.fetchall()
         return leaders
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+# Role Management Endpoints
+@app.post("/people/{person_id}/attendee")
+def create_attendee(person_id: int, body: dict):
+    """
+    Creates an Attendee record for a person. Requires guardian information.
+    """
+    guardian = body.get("guardian")
+    if not guardian:
+        raise HTTPException(400, "guardian is required")
+    
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Check if person exists
+        cursor.execute("SELECT ID FROM Person WHERE ID = %s;", (person_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Person not found")
+        
+        # Check if already an attendee
+        cursor.execute("SELECT ID FROM Attendee WHERE PersonID = %s;", (person_id,))
+        if cursor.fetchone():
+            raise HTTPException(400, "Person is already an attendee")
+        
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM Attendee;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO Attendee (ID, PersonID, Guardian)
+            VALUES (%s, %s, %s);
+        """, (next_id, person_id, guardian))
+        cnx.commit()
+        
+        return {"message": "Attendee created successfully", "id": next_id}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.post("/people/{person_id}/leader")
+def create_leader(person_id: int):
+    """
+    Creates a Leader record for a person.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Check if person exists
+        cursor.execute("SELECT ID FROM Person WHERE ID = %s;", (person_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Person not found")
+        
+        # Check if already a leader
+        cursor.execute("SELECT ID FROM Leader WHERE PersonID = %s;", (person_id,))
+        if cursor.fetchone():
+            raise HTTPException(400, "Person is already a leader")
+        
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM Leader;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO Leader (ID, PersonID)
+            VALUES (%s, %s);
+        """, (next_id, person_id))
+        cnx.commit()
+        
+        return {"message": "Leader created successfully", "id": next_id}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.post("/people/{person_id}/volunteer")
+def create_volunteer(person_id: int):
+    """
+    Creates a Volunteer record for a person.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Check if person exists
+        cursor.execute("SELECT ID FROM Person WHERE ID = %s;", (person_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Person not found")
+        
+        # Check if already a volunteer
+        cursor.execute("SELECT ID FROM Volunteer WHERE PersonID = %s;", (person_id,))
+        if cursor.fetchone():
+            raise HTTPException(400, "Person is already a volunteer")
+        
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM Volunteer;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO Volunteer (ID, PersonID)
+            VALUES (%s, %s);
+        """, (next_id, person_id))
+        cnx.commit()
+        
+        return {"message": "Volunteer created successfully", "id": next_id}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/attendees/{attendee_id}")
+def delete_attendee(attendee_id: int):
+    """
+    Deletes an Attendee record by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        cursor.execute("SELECT ID FROM Attendee WHERE ID = %s;", (attendee_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Attendee not found")
+        
+        cursor.execute("DELETE FROM Attendee WHERE ID = %s;", (attendee_id,))
+        cnx.commit()
+        
+        return {"message": "Attendee deleted successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/leaders/{leader_id}")
+def delete_leader(leader_id: int):
+    """
+    Deletes a Leader record by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        cursor.execute("SELECT ID FROM Leader WHERE ID = %s;", (leader_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Leader not found")
+        
+        cursor.execute("DELETE FROM Leader WHERE ID = %s;", (leader_id,))
+        cnx.commit()
+        
+        return {"message": "Leader deleted successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/volunteers/{volunteer_id}")
+def delete_volunteer(volunteer_id: int):
+    """
+    Deletes a Volunteer record by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        cursor.execute("SELECT ID FROM Volunteer WHERE ID = %s;", (volunteer_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Volunteer not found")
+        
+        cursor.execute("DELETE FROM Volunteer WHERE ID = %s;", (volunteer_id,))
+        cnx.commit()
+        
+        return {"message": "Volunteer deleted successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.get("/people/{person_id}/roles")
+def get_person_roles(person_id: int):
+    """
+    Gets all roles (Attendee, Leader, Volunteer) for a person.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # Get attendee
+        cursor.execute("""
+            SELECT A.ID AS id, A.Guardian AS guardian
+            FROM Attendee A
+            WHERE A.PersonID = %s;
+        """, (person_id,))
+        attendee = cursor.fetchone()
+        
+        # Get leader
+        cursor.execute("""
+            SELECT L.ID AS id
+            FROM Leader L
+            WHERE L.PersonID = %s;
+        """, (person_id,))
+        leader = cursor.fetchone()
+        
+        # Get volunteer
+        cursor.execute("""
+            SELECT V.ID AS id
+            FROM Volunteer V
+            WHERE V.PersonID = %s;
+        """, (person_id,))
+        volunteer = cursor.fetchone()
+        
+        return {
+            "personId": person_id,
+            "attendee": attendee,
+            "leader": leader,
+            "volunteer": volunteer
+        }
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
@@ -844,6 +1126,193 @@ def get_upcoming_events():
     finally:
         cursor.close()
         cnx.close()
+
+
+@app.get("/events/{event_id}/comprehensive")
+def get_comprehensive_event_summary(event_id: int):
+    """
+    Comprehensive event summary combining MySQL, Redis, and MongoDB.
+    Returns event details, registrations, live check-ins, and notes from all three databases.
+    """
+    try:
+        # ===== MySQL: Get event details and registrations =====
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # Get event basic info
+        cursor.execute("""
+            SELECT ID AS id, Name AS name, Type AS type,
+                   DateTime AS dateTime, Location AS location, Notes AS notes
+            FROM Event
+            WHERE ID = %s;
+        """, (event_id,))
+        event = cursor.fetchone()
+        
+        if not event:
+            raise HTTPException(404, "Event not found")
+        
+        # Get registrations with person details
+        # Try with VolunteerID first, fallback if column doesn't exist
+        try:
+            cursor.execute("""
+                SELECT R.ID AS id,
+                       R.EventID AS eventId,
+                       R.AttendeeID AS attendeeId,
+                       R.LeaderID AS leaderId,
+                       R.VolunteerID AS volunteerId,
+                       R.EmergencyContact AS emergencyContact,
+                       P.FirstName AS firstName,
+                       P.LastName AS lastName,
+                       P.ID AS personId
+                FROM Registration R
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                LEFT JOIN Volunteer V ON R.VolunteerID = V.ID
+                LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID OR V.PersonID = P.ID)
+                WHERE R.EventID = %s;
+            """, (event_id,))
+        except mysql.connector.Error:
+            # Fallback if VolunteerID column doesn't exist
+            cursor.execute("""
+                SELECT R.ID AS id,
+                       R.EventID AS eventId,
+                       R.AttendeeID AS attendeeId,
+                       R.LeaderID AS leaderId,
+                       NULL AS volunteerId,
+                       R.EmergencyContact AS emergencyContact,
+                       P.FirstName AS firstName,
+                       P.LastName AS lastName,
+                       P.ID AS personId
+                FROM Registration R
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                LEFT JOIN Person P ON (A.PersonID = P.ID OR L.PersonID = P.ID)
+                WHERE R.EventID = %s;
+            """, (event_id,))
+        registrations = cursor.fetchall()
+        
+        # Get registration statistics
+        attendee_count = sum(1 for r in registrations if r.get('attendeeId'))
+        leader_count = sum(1 for r in registrations if r.get('leaderId'))
+        volunteer_count = sum(1 for r in registrations if r.get('volunteerId'))
+        
+        cursor.close()
+        cnx.close()
+        
+        # ===== Redis: Get live check-in data =====
+        check_in_data = {
+            "checkedInCount": 0,
+            "checkedInStudents": [],
+            "checkInTimes": {}
+        }
+        
+        try:
+            r = get_redis_conn()
+            checked_in_key = f"event:{event_id}:checkedIn"
+            times_key = f"event:{event_id}:checkInTimes"
+            
+            # Get checked-in student IDs
+            student_ids = r.smembers(checked_in_key)
+            
+            if student_ids:
+                # Get timestamps
+                timestamps = r.hgetall(times_key)
+                
+                # Convert to list of integers
+                student_ids_int = [int(sid) for sid in student_ids]
+                
+                # Get person details from MySQL for checked-in students
+                cnx2 = db_pool.get_connection()
+                cursor2 = cnx2.cursor(dictionary=True)
+                
+                if student_ids_int:
+                    format_strings = ",".join(["%s"] * len(student_ids_int))
+                    query = f"SELECT ID, FirstName, LastName FROM Person WHERE ID IN ({format_strings});"
+                    cursor2.execute(query, tuple(student_ids_int))
+                    checked_in_people = cursor2.fetchall()
+                    
+                    check_in_data["checkedInCount"] = len(checked_in_people)
+                    check_in_data["checkedInStudents"] = [
+                        {
+                            "personId": p["ID"],
+                            "firstName": p["FirstName"],
+                            "lastName": p["LastName"],
+                            "checkInTime": timestamps.get(str(p["ID"]))
+                        }
+                        for p in checked_in_people
+                    ]
+                    check_in_data["checkInTimes"] = timestamps
+                
+                cursor2.close()
+                cnx2.close()
+        except redis.RedisError as e:
+            # Redis might not be available, continue without it
+            print(f"Redis error (non-fatal): {e}")
+        except Exception as e:
+            # Any other error, continue without Redis data
+            print(f"Error fetching Redis data (non-fatal): {e}")
+        
+        # ===== MongoDB: Get event notes/highlights =====
+        event_notes = []
+        try:
+            db = get_mongo_db()
+            notes_collection = db["eventNotes"]
+            notes = list(notes_collection.find({"eventId": event_id}))
+            
+            for note in notes:
+                note["_id"] = str(note["_id"])
+                event_notes.append(note)
+        except Exception as e:
+            # MongoDB might not be available, continue without it
+            print(f"MongoDB error (non-fatal): {e}")
+        
+        # ===== Combine all data =====
+        result = {
+            "event": event,
+            "registrations": {
+                "total": len(registrations),
+                "attendees": attendee_count,
+                "leaders": leader_count,
+                "volunteers": volunteer_count,
+                "list": registrations
+            },
+            "liveCheckIns": {
+                "count": check_in_data["checkedInCount"],
+                "students": check_in_data["checkedInStudents"],
+                "source": "Redis"
+            },
+            "notes": {
+                "count": len(event_notes),
+                "list": event_notes,
+                "source": "MongoDB"
+            },
+            "summary": {
+                "totalRegistered": len(registrations),
+                "totalCheckedIn": check_in_data["checkedInCount"],
+                "attendanceRate": round((check_in_data["checkedInCount"] / len(registrations) * 100) if registrations else 0, 2),
+                "notesCount": len(event_notes)
+            },
+            "dataSources": {
+                "eventInfo": "MySQL",
+                "registrations": "MySQL",
+                "liveCheckIns": "Redis",
+                "notes": "MongoDB"
+            }
+        }
+        
+        return result
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+        if 'cnx2' in locals() and cnx2.is_connected():
+            cursor2.close()
+            cnx2.close()
 
 
 @app.get("/events/{event_id}")
@@ -1207,6 +1676,78 @@ def get_live_checkins(eventId: int):
         if 'cnx' in locals() and cnx.is_connected():
             cursor.close()
             cnx.close()
+
+
+@app.post("/event/{eventId}/checkin/{personId}")
+def checkin_person(eventId: int, personId: int):
+    """
+    Checks in a person to an event using Redis for real-time tracking.
+    """
+    try:
+        r = get_redis_conn()
+        
+        checked_in_key = f"event:{eventId}:checkedIn"
+        times_key = f"event:{eventId}:checkInTimes"
+        
+        # Check if person exists
+        cnx = get_db_connection()
+        cursor = cnx.cursor()
+        cursor.execute("SELECT ID, FirstName, LastName FROM Person WHERE ID = %s;", (personId,))
+        person = cursor.fetchone()
+        if not person:
+            raise HTTPException(404, "Person not found")
+        cursor.close()
+        cnx.close()
+        
+        # Add to checked-in set
+        r.sadd(checked_in_key, personId)
+        
+        # Store check-in timestamp
+        r.hset(times_key, personId, datetime.utcnow().isoformat())
+        
+        return {
+            "message": f"Person {personId} checked in to event {eventId}",
+            "eventId": eventId,
+            "personId": personId,
+            "checkInTime": datetime.utcnow().isoformat()
+        }
+    except redis.RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {e}")
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/event/{eventId}/checkin/{personId}")
+def checkout_person(eventId: int, personId: int):
+    """
+    Checks out a person from an event (removes from Redis).
+    """
+    try:
+        r = get_redis_conn()
+        
+        checked_in_key = f"event:{eventId}:checkedIn"
+        times_key = f"event:{eventId}:checkInTimes"
+        
+        # Remove from checked-in set
+        removed = r.srem(checked_in_key, personId)
+        
+        # Remove timestamp
+        r.hdel(times_key, personId)
+        
+        if removed == 0:
+            raise HTTPException(404, "Person not checked in to this event")
+        
+        return {
+            "message": f"Person {personId} checked out from event {eventId}",
+            "eventId": eventId,
+            "personId": personId
+        }
+    except redis.RedisError as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {e}")
 
 
 @app.get("/demo", response_class=FileResponse)

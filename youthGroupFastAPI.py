@@ -481,6 +481,61 @@ def get_volunteer_by_id(volunteer_id: int):
             cnx.close()
 
 
+@app.get("/attendees")
+def get_all_attendees():
+    """
+    Gets all attendees with their person information
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT A.ID AS id,
+                   A.PersonID AS personId,
+                   P.FirstName AS firstName,
+                   P.LastName AS lastName,
+                   A.Guardian AS guardian
+            FROM Attendee A
+            JOIN Person P ON A.PersonID = P.ID
+            ORDER BY P.LastName, P.FirstName;
+        """)
+        attendees = cursor.fetchall()
+        return attendees
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.get("/leaders")
+def get_all_leaders():
+    """
+    Gets all leaders with their person information
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT L.ID AS id,
+                   L.PersonID AS personId,
+                   P.FirstName AS firstName,
+                   P.LastName AS lastName
+            FROM Leader L
+            JOIN Person P ON L.PersonID = P.ID
+            ORDER BY P.LastName, P.FirstName;
+        """)
+        leaders = cursor.fetchall()
+        return leaders
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
 @app.get("/smallgroups")
 def get_all_small_groups():
     """

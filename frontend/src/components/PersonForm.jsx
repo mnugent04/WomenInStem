@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-function PersonForm({ person, onSave }) {
+function PersonForm({ person, onSave, onCancel }) {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -9,7 +9,11 @@ function PersonForm({ person, onSave }) {
 
   useEffect(() => {
     if (person) {
-      setFormData(person);
+      setFormData({
+        firstName: person.firstName || '',
+        lastName: person.lastName || '',
+        age: person.age !== null && person.age !== undefined ? person.age : '',
+      });
     } else {
       setFormData({
         firstName: '',
@@ -29,7 +33,19 @@ function PersonForm({ person, onSave }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    // Prepare data for API - convert age to number or null
+    const submitData = {
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      age: formData.age === '' || formData.age === null ? null : parseInt(formData.age, 10),
+    };
+    
+    // Include id only if editing
+    if (person && person.id) {
+      submitData.id = person.id;
+    }
+    
+    onSave(submitData);
   };
 
   return (
@@ -57,9 +73,17 @@ function PersonForm({ person, onSave }) {
           placeholder="Age"
           value={formData.age}
           onChange={handleChange}
+          min="0"
         />
       </div>
-      <button type="submit">Save</button>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <button type="submit">{person && person.id ? 'Update' : 'Add Person'}</button>
+        {person && person.id && onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }

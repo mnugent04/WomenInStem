@@ -3198,8 +3198,9 @@ def checkin_person(eventId: int, personId: int):
         raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
 
     finally:
-        if cnx and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 

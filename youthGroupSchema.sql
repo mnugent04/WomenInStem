@@ -1,3 +1,4 @@
+DROP DATABASE YouthGroupDB;
 CREATE DATABASE YouthGroupDB;
 USE YouthGroupDB;
 

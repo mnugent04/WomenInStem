@@ -1,17 +1,42 @@
-# graphql_schema.py
-
 """
-This file defines the GraphQL schema for the Youth Group API.
+graphql_schema.py - GraphQL Schema Definition
 
-GraphQL provides a flexible query language that allows clients to request exactly the data they need.
-This schema wraps our existing REST API endpoints, providing a GraphQL interface to the same functionality.
+This file defines the complete GraphQL schema for the Youth Group API.
+GraphQL provides an alternative to REST APIs where clients can request exactly 
+the data they need in a single query.
 
 Key Concepts:
 1. Schema: Defines the types of data that can be queried - the contract between client and server
-2. Types: Building blocks representing our data models (Person, Event, SmallGroup, etc.)
+2. Types (@strawberry.type): Building blocks representing our data models (Person, Event, etc.)
 3. Query: Read operations - fetching data from MySQL, MongoDB, and Redis
 4. Mutation: Write operations - creating, updating, and deleting data
-5. Resolver: Functions that fetch/process data for each field
+5. Resolver: Functions that fetch/process data for each field (the actual database queries)
+6. Input Types (@strawberry.input): Define what data clients send for mutations
+
+How GraphQL Works:
+- Client sends a query describing what data they want
+- GraphQL validates the query against the schema
+- Resolvers execute database queries to fetch the data
+- Results are returned in the exact format requested
+
+Example Query:
+{
+  people {
+    id
+    firstName
+    lastName
+  }
+  events {
+    id
+    name
+    type
+  }
+}
+
+This schema integrates with three databases:
+- MySQL: Structured data (people, events, registrations)
+- MongoDB: Flexible documents (notes, event types)
+- Redis: Real-time data (live check-ins)
 """
 
 import strawberry
@@ -40,10 +65,18 @@ from bson import ObjectId
 
 # --- Strawberry Types ---
 # These represent our data models in GraphQL
+# @strawberry.type decorator tells Strawberry this is a GraphQL type
+# These types define what fields clients can request
 
 @strawberry.type
 class Person:
-    """GraphQL type representing a person."""
+    """
+    GraphQL type representing a person.
+    
+    This type maps to the Person table in MySQL.
+    Fields correspond to database columns.
+    Optional fields can be None (nullable in database).
+    """
     id: int
     firstName: str
     lastName: str
@@ -297,106 +330,201 @@ class EventNoteInput:
 
 # --- Resolver Functions ---
 # These functions fetch data from the database
+# Resolvers are called by GraphQL when a field is requested
+# Each resolver executes the actual database query
 
 def get_all_people_resolver() -> List[Person]:
-    """Resolver to fetch all people."""
+    """
+    Resolver to fetch all people from MySQL.
+    
+    How it works:
+    1. Get a connection from the MySQL pool
+    2. Execute SELECT query to get all people
+    3. Convert database rows to Person objects
+    4. Return list of Person objects
+    5. GraphQL automatically serializes these to JSON
+    
+    Returns:
+        List[Person]: All people from the database
+    """
     try:
+        # Get connection from pool (reuses existing connections efficiently)
         cnx = db_pool.get_connection()
+        # Create cursor that returns results as dictionaries (easier to work with)
         cursor = cnx.cursor(dictionary=True)
+        
+        # Execute SQL query
+        # AS clauses rename columns to match GraphQL field names (camelCase)
         cursor.execute("SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person ORDER BY lastName, firstName;")
+        
+        # Fetch all rows returned by the query
         people_data = cursor.fetchall()
+        
+        # Close cursor and return connection to pool
         cursor.close()
         cnx.close()
+        
+        # Convert database rows to Person objects
+        # **p unpacks dictionary into keyword arguments for Person constructor
+        # Example: Person(id=1, firstName="John", lastName="Doe", age=20)
         return [Person(**p) for p in people_data]
     except Exception as e:
+        # If database error occurs, raise HTTP exception
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_person_by_id_resolver(person_id: int) -> Optional[Person]:
-    """Resolver to fetch a person by ID."""
+    """
+    Resolver to fetch a specific person by their ID from MySQL.
+    
+    Args:
+        person_id: The ID of the person to fetch
+        
+    Returns:
+        Person object if found, None if person doesn't exist
+        
+    Database Pattern:
+    1. Execute SELECT query with WHERE clause filtering by ID
+    2. Use fetchone() since we expect at most one result
+    3. Return None if person not found (GraphQL handles this gracefully)
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Query with WHERE clause to filter by ID
+        # %s placeholder prevents SQL injection
         cursor.execute("SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person WHERE ID = %s;", (person_id,))
-        person_data = cursor.fetchone()
+        person_data = cursor.fetchone()  # Get single row (or None if not found)
         cursor.close()
         cnx.close()
         if not person_data:
-            return None
-        return Person(**person_data)
+            return None  # Person doesn't exist
+        return Person(**person_data)  # Convert dict to Person object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_all_events_resolver() -> List[Event]:
-    """Resolver to fetch all events."""
+    """
+    Resolver to fetch all events from MySQL, ordered by most recent first.
+    
+    Returns:
+        List[Event]: All events from the database, newest first
+        
+    Database Pattern:
+    1. Execute SELECT query for all events
+    2. ORDER BY DateTime DESC sorts newest events first
+    3. Convert all rows to Event objects
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Query all events, ordered by date/time (newest first)
         cursor.execute("""
             SELECT ID AS id, Name AS name, Type AS type,
                    DateTime AS dateTime, Location AS location, Notes AS notes
             FROM Event
             ORDER BY DateTime DESC;
         """)
-        events_data = cursor.fetchall()
+        events_data = cursor.fetchall()  # Get all rows
         cursor.close()
         cnx.close()
-        return [Event(**e) for e in events_data]
+        return [Event(**e) for e in events_data]  # Convert each row to Event object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_event_by_id_resolver(event_id: int) -> Optional[Event]:
-    """Resolver to fetch an event by ID."""
+    """
+    Resolver to fetch a specific event by its ID from MySQL.
+    
+    Args:
+        event_id: The ID of the event to fetch
+        
+    Returns:
+        Event object if found, None if event doesn't exist
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Query event by ID
         cursor.execute("""
             SELECT ID AS id, Name AS name, Type AS type,
                    DateTime AS dateTime, Location AS location, Notes AS notes
             FROM Event
             WHERE ID = %s;
         """, (event_id,))
-        event_data = cursor.fetchone()
+        event_data = cursor.fetchone()  # Get single row
         cursor.close()
         cnx.close()
         if not event_data:
-            return None
-        return Event(**event_data)
+            return None  # Event doesn't exist
+        return Event(**event_data)  # Convert dict to Event object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_all_small_groups_resolver() -> List[SmallGroup]:
-    """Resolver to fetch all small groups."""
+    """
+    Resolver to fetch all small groups from MySQL, ordered alphabetically by name.
+    
+    Returns:
+        List[SmallGroup]: All small groups, sorted by name
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Query all groups, ordered alphabetically
         cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup ORDER BY name;")
         groups_data = cursor.fetchall()
         cursor.close()
         cnx.close()
-        return [SmallGroup(**g) for g in groups_data]
+        return [SmallGroup(**g) for g in groups_data]  # Convert to SmallGroup objects
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_small_group_by_id_resolver(group_id: int) -> Optional[SmallGroup]:
-    """Resolver to fetch a small group by ID."""
+    """
+    Resolver to fetch a specific small group by its ID from MySQL.
+    
+    Args:
+        group_id: The ID of the small group to fetch
+        
+    Returns:
+        SmallGroup object if found, None if group doesn't exist
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Query group by ID
         cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup WHERE ID = %s;", (group_id,))
         group_data = cursor.fetchone()
         cursor.close()
         cnx.close()
         if not group_data:
-            return None
-        return SmallGroup(**group_data)
+            return None  # Group doesn't exist
+        return SmallGroup(**group_data)  # Convert dict to SmallGroup object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_small_group_members_resolver(group_id: int) -> List[SmallGroupMember]:
-    """Resolver to fetch members of a small group."""
+    """
+    Resolver to fetch all members of a small group using JOINs.
+    
+    This demonstrates complex SQL JOINs:
+    - SmallGroupMember links attendees to groups
+    - Attendee links to Person
+    - JOINs combine data from multiple tables
+    
+    Args:
+        group_id: The ID of the small group
+        
+    Returns:
+        List[SmallGroupMember]: All members with their names included
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # Complex JOIN query:
+        # 1. Start with SmallGroupMember table
+        # 2. JOIN Attendee to get PersonID
+        # 3. JOIN Person to get FirstName/LastName
         cursor.execute("""
             SELECT SGM.ID AS id, SGM.AttendeeID AS attendeeId, SGM.SmallGroupID AS smallGroupId,
                    P.FirstName AS firstName, P.LastName AS lastName
@@ -408,15 +536,29 @@ def get_small_group_members_resolver(group_id: int) -> List[SmallGroupMember]:
         members_data = cursor.fetchall()
         cursor.close()
         cnx.close()
-        return [SmallGroupMember(**m) for m in members_data]
+        return [SmallGroupMember(**m) for m in members_data]  # Convert to objects
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_small_group_leaders_resolver(group_id: int) -> List[SmallGroupLeader]:
-    """Resolver to fetch leaders of a small group."""
+    """
+    Resolver to fetch all leaders of a small group using JOINs.
+    
+    Similar to members resolver but for leaders:
+    - SmallGroupLeader links leaders to groups
+    - JOIN Person to get leader names
+    
+    Args:
+        group_id: The ID of the small group
+        
+    Returns:
+        List[SmallGroupLeader]: All leaders with their names included
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # JOIN query to get leader names:
+        # SmallGroupLeader -> Person (LeaderID is Person.ID)
         cursor.execute("""
             SELECT L.ID AS id, L.LeaderID AS leaderId, L.SmallGroupID AS smallGroupId,
                    P.FirstName AS firstName, P.LastName AS lastName
@@ -427,7 +569,7 @@ def get_small_group_leaders_resolver(group_id: int) -> List[SmallGroupLeader]:
         leaders_data = cursor.fetchall()
         cursor.close()
         cnx.close()
-        return [SmallGroupLeader(**l) for l in leaders_data]
+        return [SmallGroupLeader(**l) for l in leaders_data]  # Convert to objects
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
@@ -470,17 +612,37 @@ def get_event_registrations_resolver(event_id: int) -> List[Registration]:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def get_person_notes_resolver(person_id: int) -> List[PersonNote]:
-    """Resolver to fetch notes for a person from MongoDB."""
+    """
+    Resolver to fetch notes for a person from MongoDB.
+    
+    This demonstrates MongoDB integration:
+    - MongoDB stores flexible documents (can have different fields)
+    - Uses .get() with defaults for optional fields
+    - Converts MongoDB ObjectId to string for GraphQL
+    
+    Args:
+        person_id: The ID of the person to get notes for
+        
+    Returns:
+        List[PersonNote]: All notes for the person
+    """
     try:
+        # Get MongoDB database instance
         db = get_mongo_db()
+        
+        # Query MongoDB collection
+        # find() with filter returns cursor, convert to list
+        # {"personId": person_id} is the query filter (like WHERE clause)
         notes = list(db["personNotes"].find({"personId": person_id}))
+        
+        # Convert MongoDB documents to PersonNote objects
         result = []
         for note in notes:
             result.append(PersonNote(
-                id=str(note["_id"]),
-                personId=note["personId"],
-                text=note.get("text", ""),
-                category=note.get("category"),
+                id=str(note["_id"]),              # Convert ObjectId to string
+                personId=note["personId"],        # Required field
+                text=note.get("text", ""),        # .get() with default for optional fields
+                category=note.get("category"),    # Returns None if field doesn't exist
                 createdBy=note.get("createdBy"),
                 created=note.get("created"),
                 updated=note.get("updated")
@@ -490,63 +652,126 @@ def get_person_notes_resolver(person_id: int) -> List[PersonNote]:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
 
 def get_parent_contacts_resolver(person_id: int) -> List[ParentContact]:
-    """Resolver to fetch parent contacts for a person from MongoDB."""
+    """
+    Resolver to fetch parent contacts for a person from MongoDB.
+    
+    Parent contacts are stored in MongoDB because they have flexible fields:
+    - method (phone, email, in-person, etc.)
+    - summary (free-form text)
+    - date (optional contact date)
+    - Metadata (createdBy, created, updated)
+    
+    Args:
+        person_id: The ID of the person to get contacts for
+        
+    Returns:
+        List[ParentContact]: All parent contact records for the person
+    """
     try:
         db = get_mongo_db()
+        # Query MongoDB collection with filter
         contacts = list(db["parentContacts"].find({"personId": person_id}))
         result = []
+        # Convert MongoDB documents to ParentContact objects
         for contact in contacts:
             result.append(ParentContact(
-                id=str(contact["_id"]),
-                personId=contact["personId"],
-                method=contact.get("method"),
-                summary=contact.get("summary", ""),
-                date=contact.get("date"),
-                createdBy=contact.get("createdBy"),
-                created=contact.get("created"),
-                updated=contact.get("updated")
+                id=str(contact["_id"]),              # Convert ObjectId to string
+                personId=contact["personId"],        # Required field
+                method=contact.get("method"),        # Optional field
+                summary=contact.get("summary", ""),  # Required with default
+                date=contact.get("date"),            # Optional field
+                createdBy=contact.get("createdBy"),  # Optional metadata
+                created=contact.get("created"),      # Optional timestamp
+                updated=contact.get("updated")        # Optional timestamp
             ))
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
 
 def get_event_notes_resolver(event_id: int) -> List[EventNote]:
-    """Resolver to fetch notes for an event from MongoDB."""
+    """
+    Resolver to fetch notes/highlights for an event from MongoDB.
+    
+    Event notes are stored in MongoDB with flexible fields:
+    - notes: General event notes
+    - concerns: Any concerns from the event
+    - studentWins: Positive highlights/achievements
+    - Metadata: createdBy, created, updated timestamps
+    
+    Args:
+        event_id: The ID of the event to get notes for
+        
+    Returns:
+        List[EventNote]: All notes/highlights for the event
+    """
     try:
         db = get_mongo_db()
+        # Query MongoDB collection
         notes = list(db["eventNotes"].find({"eventId": event_id}))
         result = []
+        # Convert MongoDB documents to EventNote objects
         for note in notes:
             result.append(EventNote(
-                id=str(note["_id"]),
-                eventId=note["eventId"],
-                notes=note.get("notes"),
-                concerns=note.get("concerns"),
-                studentWins=note.get("studentWins"),
-                createdBy=note.get("createdBy"),
-                created=note.get("created"),
-                updated=note.get("updated")
+                id=str(note["_id"]),                    # Convert ObjectId to string
+                eventId=note["eventId"],                # Required field
+                notes=note.get("notes"),                # Optional field
+                concerns=note.get("concerns"),          # Optional field
+                studentWins=note.get("studentWins"),     # Optional field
+                createdBy=note.get("createdBy"),       # Optional metadata
+                created=note.get("created"),            # Optional timestamp
+                updated=note.get("updated")              # Optional timestamp
             ))
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
 
 def get_live_checkins_resolver(event_id: int) -> Optional[LiveCheckInSummary]:
-    """Resolver to fetch live check-ins from Redis."""
-    try:
-        r = get_redis_conn()
-        checked_in_key = f"event:{event_id}:checkedIn"
-        times_key = f"event:{event_id}:checkInTimes"
+    """
+    Resolver to fetch live check-ins from Redis (combines Redis + MySQL).
+    
+    This demonstrates multi-database integration:
+    1. Get checked-in student IDs from Redis SET
+    2. Get check-in timestamps from Redis HASH
+    3. Query MySQL to get student details (name, etc.)
+    4. Combine Redis and MySQL data into response
+    
+    Why Redis for check-ins?
+    - Very fast (in-memory)
+    - Perfect for real-time data
+    - SET stores unique student IDs
+    - HASH stores timestamps
+    
+    Args:
+        event_id: The event ID to get check-ins for
         
+    Returns:
+        LiveCheckInSummary or None if no check-ins or Redis unavailable
+    """
+    try:
+        # Get Redis client
+        r = get_redis_conn()
+        
+        # Define Redis keys using naming convention
+        checked_in_key = f"event:{event_id}:checkedIn"      # SET: student IDs
+        times_key = f"event:{event_id}:checkInTimes"         # HASH: ID -> timestamp
+        
+        # SMEMBERS: Get all members of the SET (all checked-in student IDs)
         student_ids = r.smembers(checked_in_key)
         if not student_ids:
-            return None
+            return None  # No one checked in
         
+        # HGETALL: Get all key-value pairs from HASH (all timestamps)
         timestamps = r.hgetall(times_key)
+        
+        # Convert Redis strings to integers for MySQL query
         student_ids_int = [int(sid) for sid in student_ids]
         
+        # Query MySQL to get student details (names, etc.)
         cnx = get_db_connection()
         cursor = cnx.cursor(dictionary=True)
+        
+        # Build dynamic IN clause for SQL query
+        # Format: "SELECT ... WHERE ID IN (%s, %s, %s)"
         format_strings = ",".join(["%s"] * len(student_ids_int))
         query = f"SELECT ID, FirstName, LastName FROM Person WHERE ID IN ({format_strings});"
         cursor.execute(query, tuple(student_ids_int))
@@ -554,16 +779,18 @@ def get_live_checkins_resolver(event_id: int) -> Optional[LiveCheckInSummary]:
         cursor.close()
         cnx.close()
         
+        # Combine Redis timestamps with MySQL student data
         students = [
             CheckedInStudent(
                 studentId=p["ID"],
                 firstName=p["FirstName"],
                 lastName=p["LastName"],
-                checkInTime=timestamps.get(str(p["ID"]))
+                checkInTime=timestamps.get(str(p["ID"]))  # Get timestamp from Redis hash
             )
             for p in people
         ]
         
+        # Return combined summary
         return LiveCheckInSummary(
             eventId=event_id,
             count=len(students),
@@ -571,8 +798,10 @@ def get_live_checkins_resolver(event_id: int) -> Optional[LiveCheckInSummary]:
             message=f"{len(students)} students are currently checked in."
         )
     except redis.RedisError as e:
-        return None  # Redis might not be available
+        # Redis might not be available - return None instead of crashing
+        return None
     except Exception as e:
+        # Any other error - return None
         return None
 
 def get_comprehensive_event_summary_resolver(event_id: int) -> Optional[ComprehensiveEventSummary]:
@@ -632,16 +861,36 @@ def get_comprehensive_event_summary_resolver(event_id: int) -> Optional[Comprehe
 # --- Mutation Resolvers ---
 
 def create_person_resolver(person: PersonCreateInput) -> Person:
-    """Resolver to create a new person."""
+    """
+    Resolver to create a new person in MySQL.
+    
+    Mutation Pattern:
+    1. Execute INSERT query with provided data
+    2. Commit transaction (saves to database)
+    3. Get generated ID using cursor.lastrowid
+    4. Query database to get complete person record
+    5. Return the new person object
+    
+    Args:
+        person: PersonCreateInput with firstName, lastName, and optional age
+        
+    Returns:
+        Person: The newly created person with generated ID
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # INSERT query with placeholders (%s) to prevent SQL injection
         cursor.execute("""
             INSERT INTO Person (FirstName, LastName, Age)
             VALUES (%s, %s, %s)
         """, (person.firstName, person.lastName, person.age))
-        cnx.commit()
+        cnx.commit()  # Save changes to database
+        
+        # Get the auto-generated ID of the newly inserted row
         person_id = cursor.lastrowid
+        
+        # Query database to get complete person record (with generated ID)
         cursor.execute(
             "SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person WHERE ID = %s",
             (person_id,)
@@ -649,25 +898,43 @@ def create_person_resolver(person: PersonCreateInput) -> Person:
         new_person = cursor.fetchone()
         cursor.close()
         cnx.close()
-        return Person(**new_person)
+        return Person(**new_person)  # Convert dict to Person object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def update_person_resolver(person_id: int, person: PersonUpdateInput) -> Person:
-    """Resolver to update a person."""
+    """
+    Resolver to update a person partially (only provided fields are updated).
+    
+    This demonstrates dynamic SQL building:
+    - Only updates fields that are provided (not None)
+    - Builds UPDATE query dynamically based on provided fields
+    - Allows partial updates (PATCH semantics)
+    
+    Args:
+        person_id: The ID of the person to update
+        person: PersonUpdateInput with optional fields to update
+        
+    Returns:
+        Person: The updated person object
+        
+    Raises:
+        HTTPException 404: If person not found
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
         
-        # Get existing person
+        # Verify person exists before updating
         cursor.execute("SELECT * FROM Person WHERE ID = %s;", (person_id,))
         existing = cursor.fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Person not found")
         
-        # Build update query
-        fields = []
-        values = []
+        # Build update query dynamically - only include fields that are provided
+        fields = []  # List of "ColumnName = %s" strings
+        values = []  # List of values to update
+        
         if person.firstName is not None:
             fields.append("FirstName = %s")
             values.append(person.firstName)
@@ -678,47 +945,83 @@ def update_person_resolver(person_id: int, person: PersonUpdateInput) -> Person:
             fields.append("Age = %s")
             values.append(person.age)
         
+        # Only execute UPDATE if there are fields to update
         if fields:
+            # Build SQL: "UPDATE Person SET Field1 = %s, Field2 = %s WHERE ID = %s"
             sql = f"UPDATE Person SET {', '.join(fields)} WHERE ID = %s"
-            values.append(person_id)
+            values.append(person_id)  # Add ID for WHERE clause
             cursor.execute(sql, values)
-            cnx.commit()
+            cnx.commit()  # Save changes
         
+        # Query database to get updated record
         cursor.execute("SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age FROM Person WHERE ID = %s;", (person_id,))
         updated = cursor.fetchone()
         cursor.close()
         cnx.close()
-        return Person(**updated)
+        return Person(**updated)  # Convert dict to Person object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def delete_person_resolver(person_id: int) -> bool:
-    """Resolver to delete a person."""
+    """
+    Resolver to delete a person from MySQL.
+    
+    Deletion Pattern:
+    1. Verify person exists before deleting
+    2. Execute DELETE query
+    3. Commit transaction
+    4. Return True if successful
+    
+    Args:
+        person_id: The ID of the person to delete
+        
+    Returns:
+        bool: True if deletion successful
+        
+    Raises:
+        HTTPException 404: If person not found
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        # Verify person exists before attempting deletion
         cursor.execute("SELECT ID FROM Person WHERE ID = %s;", (person_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Person not found")
+        
+        # Delete the person
         cursor.execute("DELETE FROM Person WHERE ID = %s;", (person_id,))
-        cnx.commit()
+        cnx.commit()  # Save deletion to database
         cursor.close()
         cnx.close()
-        return True
+        return True  # Success
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def create_event_resolver(event: EventCreateInput) -> Event:
-    """Resolver to create a new event."""
+    """
+    Resolver to create a new event in MySQL.
+    
+    Args:
+        event: EventCreateInput with name, type, dateTime, location, and optional notes
+        
+    Returns:
+        Event: The newly created event with generated ID
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
+        # INSERT event with all required fields
         cursor.execute("""
             INSERT INTO Event (Name, Type, DateTime, Location, Notes)
             VALUES (%s, %s, %s, %s, %s)
         """, (event.name, event.type, event.dateTime, event.location, event.notes))
-        cnx.commit()
+        cnx.commit()  # Save changes
+        
+        # Get generated ID
         event_id = cursor.lastrowid
+        
+        # Query to get complete event record
         cursor.execute("""
             SELECT ID AS id, Name AS name, Type AS type,
                    DateTime AS dateTime, Location AS location, Notes AS notes
@@ -727,22 +1030,39 @@ def create_event_resolver(event: EventCreateInput) -> Event:
         new_event = cursor.fetchone()
         cursor.close()
         cnx.close()
-        return Event(**new_event)
+        return Event(**new_event)  # Convert dict to Event object
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def create_small_group_resolver(group: SmallGroupCreateInput) -> SmallGroup:
-    """Resolver to create a new small group."""
+    """
+    Resolver to create a new small group in MySQL.
+    
+    This demonstrates manual ID generation:
+    - SmallGroup table doesn't use AUTO_INCREMENT
+    - We manually calculate next ID: MAX(ID) + 1
+    - IFNULL handles case where table is empty (returns 0 + 1 = 1)
+    
+    Args:
+        group: SmallGroupCreateInput with name
+        
+    Returns:
+        SmallGroup: The newly created group with generated ID
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        # Manually calculate next ID (since no AUTO_INCREMENT)
+        # IFNULL handles empty table case (returns 0 if MAX returns NULL)
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroup;")
-        next_id = cursor.fetchone()[0]
+        next_id = cursor.fetchone()[0]  # Get first column of first row
+        
+        # Insert new group with calculated ID
         cursor.execute("INSERT INTO SmallGroup (ID, Name) VALUES (%s, %s);", (next_id, group.name.strip()))
-        cnx.commit()
+        cnx.commit()  # Save changes
         cursor.close()
         cnx.close()
-        return SmallGroup(id=next_id, name=group.name.strip())
+        return SmallGroup(id=next_id, name=group.name.strip())  # Return new group
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
@@ -786,17 +1106,32 @@ def register_for_event_resolver(event_id: int, registration: RegistrationInput) 
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def add_member_to_group_resolver(group_id: int, input: AddMemberToGroupInput) -> SmallGroupMember:
-    """Resolver to add a member to a small group."""
+    """
+    Resolver to add a member (attendee) to a small group.
+    
+    Creates a relationship between an Attendee and a SmallGroup.
+    Note: attendeeId should be an Attendee ID (not Person ID).
+    
+    Args:
+        group_id: The ID of the small group
+        input: AddMemberToGroupInput with attendeeId
+        
+    Returns:
+        SmallGroupMember: The newly created membership record
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        # Calculate next ID manually
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupMember;")
         next_id = cursor.fetchone()[0]
+        
+        # Insert membership record linking attendee to group
         cursor.execute("""
             INSERT INTO SmallGroupMember (ID, AttendeeID, SmallGroupID)
             VALUES (%s, %s, %s);
         """, (next_id, input.attendeeId, group_id))
-        cnx.commit()
+        cnx.commit()  # Save membership
         cursor.close()
         cnx.close()
         return SmallGroupMember(id=next_id, attendeeId=input.attendeeId, smallGroupId=group_id)
@@ -804,17 +1139,32 @@ def add_member_to_group_resolver(group_id: int, input: AddMemberToGroupInput) ->
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def add_leader_to_group_resolver(group_id: int, input: AddLeaderToGroupInput) -> SmallGroupLeader:
-    """Resolver to add a leader to a small group."""
+    """
+    Resolver to add a leader to a small group.
+    
+    Creates a relationship between a Leader and a SmallGroup.
+    Note: leaderId should be a Leader ID (not Person ID).
+    
+    Args:
+        group_id: The ID of the small group
+        input: AddLeaderToGroupInput with leaderId
+        
+    Returns:
+        SmallGroupLeader: The newly created leadership record
+    """
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        # Calculate next ID manually
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupLeader;")
         next_id = cursor.fetchone()[0]
+        
+        # Insert leadership record linking leader to group
         cursor.execute("""
             INSERT INTO SmallGroupLeader (ID, LeaderID, SmallGroupID)
             VALUES (%s, %s, %s);
         """, (next_id, input.leaderId, group_id))
-        cnx.commit()
+        cnx.commit()  # Save leadership assignment
         cursor.close()
         cnx.close()
         return SmallGroupLeader(id=next_id, leaderId=input.leaderId, smallGroupId=group_id)
@@ -822,20 +1172,42 @@ def add_leader_to_group_resolver(group_id: int, input: AddLeaderToGroupInput) ->
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 def add_person_note_resolver(person_id: int, note: PersonNoteInput) -> PersonNote:
-    """Resolver to add a note for a person."""
+    """
+    Resolver to add a note for a person in MongoDB.
+    
+    Notes are stored in MongoDB because they have flexible fields:
+    - text: The note content
+    - category: Optional categorization
+    - createdBy: Who created the note
+    - created: Timestamp (automatically set)
+    
+    Args:
+        person_id: The ID of the person to add a note for
+        note: PersonNoteInput with note content and metadata
+        
+    Returns:
+        PersonNote: The newly created note with generated MongoDB _id
+    """
     try:
         db = get_mongo_db()
         from datetime import datetime
+        
+        # Build MongoDB document
         note_doc = {
             "personId": person_id,
             "text": note.text,
-            "category": note.category,
-            "createdBy": note.createdBy,
-            "created": datetime.utcnow(),
+            "category": note.category,           # Optional field
+            "createdBy": note.createdBy,         # Optional field
+            "created": datetime.utcnow(),         # Auto-set timestamp
         }
+        
+        # Insert document into MongoDB collection
+        # insert_one() returns result with inserted_id
         result = db["personNotes"].insert_one(note_doc)
+        
+        # Return PersonNote object with MongoDB _id converted to string
         return PersonNote(
-            id=str(result.inserted_id),
+            id=str(result.inserted_id),  # Convert ObjectId to string
             personId=person_id,
             text=note.text,
             category=note.category,
@@ -846,10 +1218,26 @@ def add_person_note_resolver(person_id: int, note: PersonNoteInput) -> PersonNot
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
 
 # --- Query Type ---
+# The Query type defines all read operations (GET requests in REST terms)
+# Each field in Query corresponds to a resolver function
 
 @strawberry.type
 class Query:
-    """Defines all read operations (queries) in the GraphQL API."""
+    """
+    Defines all read operations (queries) in the GraphQL API.
+    
+    Query fields are read-only - they fetch data but don't modify it.
+    Each field maps to a resolver function that executes the database query.
+    
+    Example query:
+    {
+      people {
+        id
+        firstName
+        lastName
+      }
+    }
+    """
     
     # People queries
     people: List[Person] = strawberry.field(
@@ -929,10 +1317,25 @@ class Query:
     )
 
 # --- Mutation Type ---
+# The Mutation type defines all write operations (POST/PUT/DELETE in REST terms)
+# Mutations modify data - create, update, or delete records
 
 @strawberry.type
 class Mutation:
-    """Defines all write operations (mutations) in the GraphQL API."""
+    """
+    Defines all write operations (mutations) in the GraphQL API.
+    
+    Mutation fields modify data - they create, update, or delete records.
+    Each field maps to a resolver function that executes the database operation.
+    
+    Example mutation:
+    mutation {
+      createPerson(firstName: "John", lastName: "Doe", age: 20) {
+        id
+        firstName
+      }
+    }
+    """
     
     createPerson: Person = strawberry.field(
         resolver=create_person_resolver,
@@ -980,5 +1383,7 @@ class Mutation:
     )
 
 # --- Schema ---
+# The schema combines Query and Mutation types
+# This is what GraphQL uses to validate queries and route them to resolvers
 schema = strawberry.Schema(query=Query, mutation=Mutation)
 

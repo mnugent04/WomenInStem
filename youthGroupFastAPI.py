@@ -48,7 +48,7 @@ from database import get_mysql_pool, get_mongo_client, close_connections, get_mo
 try:
     db_pool = mysql.connector.pooling.MySQLConnectionPool(
         pool_name="fastapi_pool",  # Name for this pool
-        pool_size=5,  # Maximum connections in pool
+        pool_size=30,  # Maximum connections in pool
         user=DB_USER,  # Database username
         password=DB_PASSWORD,  # Database password
         host=DB_HOST,  # Database server address
@@ -305,10 +305,9 @@ def get_all_people():
         # If database error, return 500 status with error message
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        # Always close connections, even if error occurred
-        # This returns connection to pool (doesn't destroy it)
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -325,6 +324,8 @@ def get_person_by_id(person_id: int):
         HTTPException 404: If person not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -338,8 +339,9 @@ def get_person_by_id(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -361,6 +363,8 @@ def create_person(person: PersonCreate):
     
     Note: Must commit() after INSERT/UPDATE/DELETE to save changes
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -393,8 +397,9 @@ def create_person(person: PersonCreate):
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -416,6 +421,8 @@ def update_person(person_id: int, person: PersonCreate):
         HTTPException 404: If person not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -443,8 +450,9 @@ def update_person(person_id: int, person: PersonCreate):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -467,6 +475,8 @@ def delete_person(person_id: int):
         HTTPException 404: If person not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -482,8 +492,9 @@ def delete_person(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -493,6 +504,8 @@ def get_registrations_for_event(event_id: int):
     """
     Gets all registrations for an event, including person names.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -539,10 +552,11 @@ def get_registrations_for_event(event_id: int):
 
     except mysql.connector.Error as err:
         raise HTTPException(500, f"DB error: {err}")
-
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 # register for an event:
@@ -626,8 +640,10 @@ def register_for_event(event_id: int, body: dict):
         raise HTTPException(500, f"DB error: {err}")
 
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 # delete registration:
@@ -644,6 +660,8 @@ def delete_registration(registration_id: int):
         HTTPException 404: If registration not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -663,8 +681,10 @@ def delete_registration(registration_id: int):
         raise HTTPException(500, f"DB error: {err}")
 
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.get("/volunteers")
@@ -672,6 +692,8 @@ def get_all_volunteers():
     """
     Gets all volunteers
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -685,8 +707,9 @@ def get_all_volunteers():
         """)
         return cursor.fetchall()
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -702,6 +725,8 @@ def get_volunteer_by_id(volunteer_id: int):
     Raises:
         HTTPException 404: If volunteer not found
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -720,8 +745,9 @@ def get_volunteer_by_id(volunteer_id: int):
             raise HTTPException(status_code=404, detail="Volunteer not found")
         return volunteer
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -738,6 +764,8 @@ def get_all_attendees():
     - Includes guardian field (unique to attendees)
     - Ordered by last name, then first name
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -757,8 +785,9 @@ def get_all_attendees():
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -774,6 +803,8 @@ def get_all_leaders():
     - Leader table links to Person via PersonID
     - Ordered by last name, then first name
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -792,8 +823,9 @@ def get_all_leaders():
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -836,8 +868,9 @@ def create_attendee(person_id: int, body: dict):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -859,6 +892,8 @@ def create_leader(person_id: int):
         HTTPException 404: If person not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -888,8 +923,9 @@ def create_leader(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -909,6 +945,8 @@ def create_volunteer(person_id: int):
         HTTPException 404: If person not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -938,8 +976,9 @@ def create_volunteer(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -948,6 +987,8 @@ def delete_attendee(attendee_id: int):
     """
     Deletes an Attendee record by ID.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -963,8 +1004,9 @@ def delete_attendee(attendee_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -984,6 +1026,8 @@ def delete_leader(leader_id: int):
         HTTPException 404: If leader not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1001,8 +1045,9 @@ def delete_leader(leader_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1022,6 +1067,8 @@ def delete_volunteer(volunteer_id: int):
         HTTPException 404: If volunteer not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1039,8 +1086,9 @@ def delete_volunteer(volunteer_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1086,8 +1134,9 @@ def get_person_roles(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1105,6 +1154,8 @@ def get_person_comprehensive_profile(person_id: int):
 
     This endpoint demonstrates complex JOINs across multiple tables.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1275,24 +1326,32 @@ def get_person_comprehensive_profile(person_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
 @app.get("/smallgroups")
 def get_all_small_groups():
     """
-    Gets all small groups
+    Gets all small groups, ordered alphabetically by name.
+    
+    Endpoint: GET /smallgroups
+    Returns: List of all small groups
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
         cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup ORDER BY name;")
         return cursor.fetchall()
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.post("/smallgroups")
@@ -1317,6 +1376,8 @@ def create_small_group(body: dict = Body(...)):
     if not name:
         raise HTTPException(400, "name is required")
 
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1336,8 +1397,9 @@ def create_small_group(body: dict = Body(...)):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1358,6 +1420,8 @@ def delete_small_group(group_id: int):
         HTTPException 404: If group not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1376,8 +1440,9 @@ def delete_small_group(group_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1399,6 +1464,8 @@ def get_small_group(group_id: int):
     Raises:
         HTTPException 404: If group not found
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1425,8 +1492,10 @@ def get_small_group(group_id: int):
         return group
 
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.get("/smallgroups/{group_id}/members")
@@ -1447,8 +1516,10 @@ def get_small_group_members(group_id: int):
         """, (group_id,))
         return cursor.fetchall()
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.get("/smallgroups/{group_id}/leaders")
@@ -1464,6 +1535,8 @@ def get_small_group_leaders(group_id: int):
     - SmallGroupLeader -> Person
     - LeaderID directly references Person.ID (simpler than members)
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1478,8 +1551,10 @@ def get_small_group_leaders(group_id: int):
         return cursor.fetchall()
 
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.post("/smallgroups/{group_id}/members")
@@ -1491,7 +1566,8 @@ def add_member_to_group(group_id: int, body: dict = Body(...)):
     attendee_id = body.get("attendeeID")
     if not attendee_id:
         raise HTTPException(400, "Missing attendeeID")
-
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1524,8 +1600,9 @@ def add_member_to_group(group_id: int, body: dict = Body(...)):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1548,6 +1625,8 @@ def remove_member_from_group(group_id: int, member_id: int):
         HTTPException 404: If membership not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1571,8 +1650,9 @@ def remove_member_from_group(group_id: int, member_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1600,6 +1680,8 @@ def add_leader_to_group(group_id: int, body: dict = Body(...)):
     if not leader_id:
         raise HTTPException(400, "Missing leaderID")
 
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1632,8 +1714,9 @@ def add_leader_to_group(group_id: int, body: dict = Body(...)):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1654,6 +1737,8 @@ def remove_leader_from_group(group_id: int, leader_id: int):
         HTTPException 404: If leadership record not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1677,8 +1762,9 @@ def remove_leader_from_group(group_id: int, leader_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1687,6 +1773,8 @@ from datetime import datetime
 
 @app.post("/events", response_model=Event, status_code=201)
 def create_event(event: EventCreate):
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1727,8 +1815,9 @@ def create_event(event: EventCreate):
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        if "cnx" in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1748,6 +1837,8 @@ def update_event(event_id: int, event: EventUpdate):
     
     Example: If only name is provided, only Name column is updated
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1814,8 +1905,9 @@ def update_event(event_id: int, event: EventUpdate):
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        if "cnx" in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
@@ -1843,6 +1935,8 @@ def delete_event(event_id: int):
         HTTPException 404: If event not found
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
@@ -1893,23 +1987,26 @@ def delete_event(event_id: int):
     except mysql.connector.Error as err:
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 
 @app.get("/events/upcoming")
 def get_upcoming_events():
-    """
-    Returns all events whose datetime is in the future.
-    """
+    # --- FIX 2: Initialize outside try block ---
+    cnx = None
+    cursor = None
     try:
+        # 1. Get Connection (Can fail with PoolError)
         cnx = db_pool.get_connection()
+        # 2. Get Cursor (Can fail if cnx failed)
         cursor = cnx.cursor(dictionary=True)
 
         cursor.execute("""
             SELECT ID AS id, Name AS name, Type AS type,
-                   DateTime AS dateTime, Location AS location, Notes AS notes
+                    DateTime AS dateTime, Location AS location, Notes AS notes
             FROM Event
             WHERE DateTime >= NOW()
             ORDER BY DateTime;
@@ -1918,11 +2015,19 @@ def get_upcoming_events():
         return cursor.fetchall()
 
     except mysql.connector.Error as err:
+        # Your existing error handling
         raise HTTPException(500, f"DB error: {err}")
 
+    except Exception:
+        # Catch the UnboundLocalError that occurs when the original exception is
+        # re-raised and the finally block is executed.
+        raise
+
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.get("/events/{event_id}/comprehensive")
@@ -1950,6 +2055,10 @@ def get_comprehensive_event_summary(event_id: int):
     - If MongoDB unavailable, continues without notes
     - MySQL errors cause full failure (core data)
     """
+    cnx = None
+    cursor = None
+    cnx2 = None
+    cursor2 = None
     try:
         # ===== MySQL: Get event details and registrations =====
         cnx = db_pool.get_connection()
@@ -2012,9 +2121,6 @@ def get_comprehensive_event_summary(event_id: int):
         leader_count = sum(1 for r in registrations if r.get('leaderId'))
         volunteer_count = sum(1 for r in registrations if r.get('volunteerId'))
 
-        cursor.close()
-        cnx.close()
-
         # ===== Redis: Get live check-in data =====
         # Redis stores real-time check-in data (very fast, in-memory)
         check_in_data = {
@@ -2063,9 +2169,6 @@ def get_comprehensive_event_summary(event_id: int):
                         for p in checked_in_people
                     ]
                     check_in_data["checkInTimes"] = timestamps
-
-                cursor2.close()
-                cnx2.close()
         except redis.RedisError as e:
             # Redis might not be available - continue without check-in data
             # This is non-fatal - we can still return event and registration data
@@ -2136,29 +2239,29 @@ def get_comprehensive_event_summary(event_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
     finally:
-        # close cursor safely
-        try:
-            cursor.close()
-        except:
-            pass
+        # Close cursors safely (must close before connections)
+        if cursor2 is not None:
+            try:
+                cursor2.close()
+            except:
+                pass
+        if cursor is not None:
+            try:
+                cursor.close()
+            except:
+                pass
 
-        # close main DB connection safely
-        try:
-            cnx.close()
-        except:
-            pass
-
-        # close 2nd cursor safely (Redis/MySQL join)
-        try:
-            cursor2.close()
-        except:
-            pass
-
-        # close 2nd DB connection safely
-        try:
-            cnx2.close()
-        except:
-            pass
+        # Close connections safely (returns them to pool)
+        if cnx2 is not None and cnx2.is_connected():
+            try:
+                cnx2.close()
+            except:
+                pass
+        if cnx is not None and cnx.is_connected():
+            try:
+                cnx.close()
+            except:
+                pass
 
 
 @app.get("/events/{event_id}")
@@ -2166,6 +2269,8 @@ def get_event_by_id(event_id: int):
     """
     Returns a single event by ID.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -2187,8 +2292,10 @@ def get_event_by_id(event_id: int):
         raise HTTPException(500, f"DB error: {err}")
 
     finally:
-        cursor.close()
-        cnx.close()
+        if cursor is not None:
+            cursor.close()
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 @app.get("/events", response_model=list[Event])
@@ -2223,19 +2330,10 @@ def get_all_events():
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        # ONLY close the cursor explicitly if it exists
-        if cursor:
+        if cursor is not None:
             cursor.close()
-
-        # Optional: You can explicitly call cnx.reconnect() here to try and revive
-        # a broken connection before returning it to the pool, but usually
-        # the pool itself handles this. For now, we rely on the pool manager.
-        # If you are still seeing connection errors, you may need to
-        # configure your pool's reset/stale parameters upon creation.
-
-        # --- REMOVED: cnx.close() ---
-        # The pool manager handles returning the connection to the pool.
-        pass
+        if cnx is not None and cnx.is_connected():
+            cnx.close()
 
 
 # mongodb!
@@ -2524,10 +2622,13 @@ def search_all(query: str):
                 """)
                 results["roles"]["volunteers"] = cursor.fetchall()
 
-            cursor.close()
-            cnx.close()
         except mysql.connector.Error as err:
             print(f"MySQL search error: {err}")
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if cnx is not None and cnx.is_connected():
+                cnx.close()
 
         # Search event types (MongoDB)
         try:
@@ -2964,7 +3065,8 @@ def get_live_checkins(eventId: int):
     combining Redis (live check-in state) and MySQL (student details).
     Mimics the caching pattern from the professor's daily deal example.
     """
-
+    cnx = None
+    cursor = None
     try:
         # 1. Connect to Redis
         r = get_redis_conn()
@@ -3020,8 +3122,9 @@ def get_live_checkins(eventId: int):
         raise HTTPException(status_code=500, detail=f"MySQL error: {err}")
 
     finally:
-        if 'cnx' in locals() and cnx.is_connected():
+        if cursor is not None:
             cursor.close()
+        if cnx is not None and cnx.is_connected():
             cnx.close()
 
 

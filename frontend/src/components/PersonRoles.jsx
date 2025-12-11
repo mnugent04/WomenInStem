@@ -7,6 +7,16 @@ function PersonRoles({ personId, onUpdate }) {
   const [showAddAttendee, setShowAddAttendee] = useState(false);
   const [guardian, setGuardian] = useState('');
 
+  // 🎯 DEFINING THE CONSISTENT SMALL BUTTON STYLE
+  const smallButtonStyle = {
+    padding: '0.25rem 0.5rem',
+    fontSize: '0.75rem',
+    width: '6rem', // Consistent width for uniformity (can be adjusted)
+    height: '1.75rem',
+    textAlign: 'center',
+    flexShrink: 0
+  };
+
   useEffect(() => {
     fetchRoles();
   }, [personId]);
@@ -14,94 +24,94 @@ function PersonRoles({ personId, onUpdate }) {
   const fetchRoles = () => {
     setLoading(true);
     api.get(`/people/${personId}/roles`)
-      .then(response => {
-        setRoles(response.data);
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error('Error fetching roles:', error);
-        setLoading(false);
-      });
+        .then(response => {
+          setRoles(response.data);
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error fetching roles:', error);
+          setLoading(false);
+        });
   };
 
   const handleAddAttendee = (e) => {
     e.preventDefault();
     api.post(`/people/${personId}/attendee`, { guardian: guardian.trim() })
-      .then(() => {
-        setGuardian('');
-        setShowAddAttendee(false);
-        fetchRoles();
-        if (onUpdate) onUpdate();
-      })
-      .catch(error => {
-        console.error('Error adding attendee:', error);
-        alert('Error: ' + (error.response?.data?.detail || error.message));
-      });
+        .then(() => {
+          setGuardian('');
+          setShowAddAttendee(false);
+          fetchRoles();
+          if (onUpdate) onUpdate();
+        })
+        .catch(error => {
+          console.error('Error adding attendee:', error);
+          alert('Error: ' + (error.response?.data?.detail || error.message));
+        });
   };
 
   const handleAddLeader = () => {
     api.post(`/people/${personId}/leader`)
-      .then(() => {
-        fetchRoles();
-        if (onUpdate) onUpdate();
-      })
-      .catch(error => {
-        console.error('Error adding leader:', error);
-        alert('Error: ' + (error.response?.data?.detail || error.message));
-      });
-  };
-
-  const handleAddVolunteer = () => {
-    api.post(`/people/${personId}/volunteer`)
-      .then(() => {
-        fetchRoles();
-        if (onUpdate) onUpdate();
-      })
-      .catch(error => {
-        console.error('Error adding volunteer:', error);
-        alert('Error: ' + (error.response?.data?.detail || error.message));
-      });
-  };
-
-  const handleRemoveAttendee = () => {
-    if (window.confirm('Are you sure you want to remove the Attendee role?')) {
-      api.delete(`/attendees/${roles.attendee.id}`)
         .then(() => {
           fetchRoles();
           if (onUpdate) onUpdate();
         })
         .catch(error => {
-          console.error('Error removing attendee:', error);
+          console.error('Error adding leader:', error);
           alert('Error: ' + (error.response?.data?.detail || error.message));
         });
+  };
+
+  const handleAddVolunteer = () => {
+    api.post(`/people/${personId}/volunteer`)
+        .then(() => {
+          fetchRoles();
+          if (onUpdate) onUpdate();
+        })
+        .catch(error => {
+          console.error('Error adding volunteer:', error);
+          alert('Error: ' + (error.response?.data?.detail || error.message));
+        });
+  };
+
+  const handleRemoveAttendee = () => {
+    if (window.confirm('Are you sure you want to remove the Attendee role?')) {
+      api.delete(`/attendees/${roles.attendee.id}`)
+          .then(() => {
+            fetchRoles();
+            if (onUpdate) onUpdate();
+          })
+          .catch(error => {
+            console.error('Error removing attendee:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
+          });
     }
   };
 
   const handleRemoveLeader = () => {
     if (window.confirm('Are you sure you want to remove the Leader role?')) {
       api.delete(`/leaders/${roles.leader.id}`)
-        .then(() => {
-          fetchRoles();
-          if (onUpdate) onUpdate();
-        })
-        .catch(error => {
-          console.error('Error removing leader:', error);
-          alert('Error: ' + (error.response?.data?.detail || error.message));
-        });
+          .then(() => {
+            fetchRoles();
+            if (onUpdate) onUpdate();
+          })
+          .catch(error => {
+            console.error('Error removing leader:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
+          });
     }
   };
 
   const handleRemoveVolunteer = () => {
     if (window.confirm('Are you sure you want to remove the Volunteer role?')) {
       api.delete(`/volunteers/${roles.volunteer.id}`)
-        .then(() => {
-          fetchRoles();
-          if (onUpdate) onUpdate();
-        })
-        .catch(error => {
-          console.error('Error removing volunteer:', error);
-          alert('Error: ' + (error.response?.data?.detail || error.message));
-        });
+          .then(() => {
+            fetchRoles();
+            if (onUpdate) onUpdate();
+          })
+          .catch(error => {
+            console.error('Error removing volunteer:', error);
+            alert('Error: ' + (error.response?.data?.detail || error.message));
+          });
     }
   };
 
@@ -109,84 +119,112 @@ function PersonRoles({ personId, onUpdate }) {
   if (!roles) return <div>Error loading roles</div>;
 
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <h3>Roles</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {/* Attendee Role */}
-        <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <strong>Attendee</strong>
-              {roles.attendee && (
-                <div style={{ fontSize: '0.9em', color: '#666', marginTop: '0.25rem' }}>
-                  Guardian: {roles.attendee.guardian}
-                </div>
+      <div style={{ marginTop: '1rem' }}>
+        <h3>Roles</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+          {/* Attendee Role */}
+          <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong>Attendee</strong>
+                {roles.attendee && (
+                    <div style={{ fontSize: '0.9em', color: '#666', marginTop: '0.25rem' }}>
+                      Guardian: {roles.attendee.guardian}
+                    </div>
+                )}
+              </div>
+              {roles.attendee ? (
+                  <button
+                      className="secondary outline"
+                      onClick={handleRemoveAttendee}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Remove
+                  </button>
+              ) : (
+                  <button
+                      className="secondary"
+                      onClick={() => setShowAddAttendee(true)}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Add Attendee
+                  </button>
               )}
             </div>
-            {roles.attendee ? (
-              <button className="secondary outline" onClick={handleRemoveAttendee}>
-                Remove
-              </button>
-            ) : (
-              <button className="secondary" onClick={() => setShowAddAttendee(true)}>
-                Add Attendee
-              </button>
+            {showAddAttendee && !roles.attendee && (
+                <form onSubmit={handleAddAttendee} style={{ marginTop: '0.5rem' }}>
+                  <input
+                      type="text"
+                      placeholder="Guardian name (required)"
+                      value={guardian}
+                      onChange={(e) => setGuardian(e.target.value)}
+                      required
+                      style={{ marginRight: '0.5rem' }}
+                  />
+                  <button type="submit" style={smallButtonStyle}>Add</button>
+                  <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setShowAddAttendee(false)}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Cancel
+                  </button>
+                </form>
             )}
           </div>
-          {showAddAttendee && !roles.attendee && (
-            <form onSubmit={handleAddAttendee} style={{ marginTop: '0.5rem' }}>
-              <input
-                type="text"
-                placeholder="Guardian name (required)"
-                value={guardian}
-                onChange={(e) => setGuardian(e.target.value)}
-                required
-                style={{ marginRight: '0.5rem' }}
-              />
-              <button type="submit">Add</button>
-              <button type="button" className="secondary" onClick={() => setShowAddAttendee(false)}>
-                Cancel
-              </button>
-            </form>
-          )}
-        </div>
 
-        {/* Leader Role */}
-        <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Leader</strong>
-            {roles.leader ? (
-              <button className="secondary outline" onClick={handleRemoveLeader}>
-                Remove
-              </button>
-            ) : (
-              <button className="secondary" onClick={handleAddLeader}>
-                Add Leader
-              </button>
-            )}
+          {/* Leader Role */}
+          <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Leader</strong>
+              {roles.leader ? (
+                  <button
+                      className="secondary outline"
+                      onClick={handleRemoveLeader}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Remove
+                  </button>
+              ) : (
+                  <button
+                      className="secondary"
+                      onClick={handleAddLeader}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Add Leader
+                  </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Volunteer Role */}
-        <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Volunteer</strong>
-            {roles.volunteer ? (
-              <button className="secondary outline" onClick={handleRemoveVolunteer}>
-                Remove
-              </button>
-            ) : (
-              <button className="secondary" onClick={handleAddVolunteer}>
-                Add Volunteer
-              </button>
-            )}
+          {/* Volunteer Role */}
+          <div style={{ padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Volunteer</strong>
+              {roles.volunteer ? (
+                  <button
+                      className="secondary outline"
+                      onClick={handleRemoveVolunteer}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Remove
+                  </button>
+              ) : (
+                  <button
+                      className="secondary"
+                      onClick={handleAddVolunteer}
+                      style={smallButtonStyle} // Applied Consistent Style
+                  >
+                    Add Volunteer
+                  </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }
 
 export default PersonRoles;
-
-

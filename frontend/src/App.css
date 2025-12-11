@@ -12,3 +12,27 @@ aside.sidebar {
 main {
   padding: 1rem;
 }
+
+/* --- Styles for the sidebar navigation links --- */
+
+/* * 1. Set a fixed width for the entire sidebar
+ * (Adjust 200px to your desired sidebar width)
+ */
+.sidebar {
+  width: 200px;
+  /* You may need to add this if your existing CSS doesn't enforce it */
+  box-sizing: border-box;
+}
+
+/* * 2. Target the navigation links inside the sidebar
+ * and make them fill the entire width of the sidebar.
+ */
+.sidebar nav ul li a {
+  /* Ensures the link fills the width of its parent <li> */
+  width: 100%;
+  /* The 'role="button"' likely already makes them display: block,
+     but setting it explicitly ensures consistency */
+  display: block;
+  /* Optional: Ensure the text is centered within the button */
+  text-align: left;
+}

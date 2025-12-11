@@ -17,6 +17,82 @@ function SmallGroupList({
                             onMemberSuccess,
                             onLeaderSuccess
                         }) {
+    // --- Helper function to render Leader/Member List ---
+    const renderPersonList = (title, list, onAdd, onRemove, isLeader) => (
+        <div>
+            {/* Title row: Displays the count and the list */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <strong>{title} ({list ? list.length : 0}):</strong>
+            </div>
+            {list && list.length > 0 ? (
+                <ul style={{ marginTop: '0.5rem', marginBottom: '1rem', listStyle: 'disc', paddingLeft: '20px' }}>
+                    {list.map((person) => (
+                        <li key={person.ID} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '0.25rem',
+                        }}>
+                            {/* 1. Name Span: Flex to fill space, hides overflow if name is too long */}
+                            <span style={{
+                                flexGrow: 1,           // Takes up available space
+                                flexShrink: 1,         // Allows it to shrink
+                                overflow: 'hidden',    // Hides text that exceeds the container
+                                textOverflow: 'ellipsis', // Adds "..." to long names
+                                whiteSpace: 'nowrap',  // Ensures the text stays on one line
+                                marginRight: '0.5rem'  // Small gap before the button
+                            }}>
+                                {person.FirstName} {person.LastName}
+                            </span>
+
+                            {onRemove && (
+                                <button
+                                    className="secondary"
+                                    style={{
+                                        padding: '0.25rem 0.5rem',
+                                        fontSize: '0.75rem',
+                                        // 2. Button: FIXED width (e.g., 5rem) for perfect consistency
+                                        width: '5rem',
+                                        // Set a consistent height to prevent vertical variation if text wraps
+                                        height: '1.75rem',
+                                        textAlign: 'center',
+                                        flexShrink: 0 // Prevent the button from shrinking
+                                    }}
+                                    onClick={() => onRemove(expandedGroupId, person.ID)}
+                                >
+                                    Remove
+                                </button>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <p style={{ fontStyle: 'italic', color: '#666', marginTop: '0.5rem' }}>No {title.toLowerCase()} yet.</p>
+            )}
+
+            {/* Add Form (rendered outside of the list) - No changes here */}
+            {isLeader ? showAddLeaderForm === expandedGroupId && (
+                <div style={{ marginTop: '0.5rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+                    <h5 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Add Leader to Group</h5>
+                    <AddLeaderToGroup
+                        groupId={expandedGroupId}
+                        onSuccess={onLeaderSuccess || (() => { if (onAddLeader) onAddLeader(null); })}
+                        onCancel={() => { if (onAddLeader) onAddLeader(null); }}
+                    />
+                </div>
+            ) : showAddMemberForm === expandedGroupId && (
+                <div style={{ marginTop: '0.5rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+                    <h5 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Add Member to Group</h5>
+                    <AddMemberToGroup
+                        groupId={expandedGroupId}
+                        onSuccess={onMemberSuccess || (() => { if (onAddMember) onAddMember(null); })}
+                        onCancel={() => { if (onAddMember) onAddMember(null); }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <figure>
             <table role="grid">
@@ -58,188 +134,46 @@ function SmallGroupList({
                         {expandedGroupId === group.id && groupDetails && (
                             <tr>
                                 <td colSpan={onDelete ? "2" : "1"}
-                                    style={{paddingLeft: '2rem', paddingTop: '1rem', paddingBottom: '1rem'}}>
-                                    <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                                        {groupDetails.leaders && groupDetails.leaders.length > 0 && (
-                                            <div>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <strong>Leaders:</strong>
-                                                    {onAddLeader && (
-                                                        <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onAddLeader(group.id);
-                                                                }}
-                                                                style={{
-                                                                    fontSize: '0.85em',
-                                                                    padding: '0.2rem 0.5rem'
-                                                                }}>
-                                                            Add Leader
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <ul style={{marginTop: '0.5rem', marginBottom: 0}}>
-                                                    {groupDetails.leaders.map((leader) => (
-                                                        <li key={leader.ID} style={{
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'center',
-                                                            marginBottom: '0.25rem'
-                                                        }}>
-                                                            <span>{leader.FirstName} {leader.LastName}</span>
-                                                            {onRemoveLeader && (
-                                                                <button
-                                                                    className="secondary"
-                                                                    onClick={() => onRemoveLeader(group.id, leader.ID)}
-                                                                    style={{
-                                                                        fontSize: '0.85em',
-                                                                        padding: '0.2rem 0.5rem'
-                                                                    }}
-                                                                >
-                                                                    Remove
-                                                                </button>
-                                                            )}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                        {(!groupDetails.leaders || groupDetails.leaders.length === 0) && (
-                                            <div>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <strong>Leaders:</strong>
-                                                    {onAddLeader && (
-                                                        <button className="secondary"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onAddLeader(group.id);
-                                                                }}>
-                                                            Add Leader
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <p style={{fontStyle: 'italic', color: '#666', marginTop: '0.5rem'}}>No
-                                                    leaders yet.</p>
-                                            </div>
-                                        )}
-                                        {showAddLeaderForm === group.id && (
-                                            <div style={{
-                                                marginTop: '0.5rem',
-                                                padding: '0.75rem',
-                                                border: '1px solid #ccc',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#f9f9f9'
-                                            }}>
-                                                <h5 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Add Leader to Group</h5>
-                                                <AddLeaderToGroup
-                                                    groupId={group.id}
-                                                    onSuccess={onLeaderSuccess || (() => {
-                                                        if (onAddLeader) onAddLeader(null);
-                                                    })}
-                                                    onCancel={() => {
-                                                        if (onAddLeader) onAddLeader(null);
+                                    style={{ paddingLeft: '2rem', paddingTop: '1rem', paddingBottom: '1rem' }}>
+
+                                    {/* Main Content Area */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                                        {/* Leaders Section */}
+                                        {renderPersonList("Leaders", groupDetails.leaders, onAddLeader, onRemoveLeader, true)}
+
+                                        {/* Members Section */}
+                                        {renderPersonList("Members", groupDetails.members, onAddMember, onRemoveMember, false)}
+
+                                        <hr style={{ margin: '0.5rem 0' }} />
+
+                                        {/* BUTTON LAYOUT (Add Leader/Member) - No changes here */}
+                                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+
+                                            {onAddLeader && (
+                                                <button
+                                                    className="secondary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onAddLeader(showAddLeaderForm === group.id ? null : group.id);
                                                     }}
-                                                />
-                                            </div>
-                                        )}
-                                        {groupDetails.members && groupDetails.members.length > 0 && (
-                                            <div>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <strong>Members:</strong>
-                                                    {onAddMember && (
-                                                        <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onAddMember(group.id);
-                                                                }}
-                                                                style={{
-                                                                    fontSize: '0.85em',
-                                                                    padding: '0.2rem 0.5rem'
-                                                                }}>
-                                                            Add Member
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <ul style={{marginTop: '0.5rem', marginBottom: 0}}>
-                                                    {groupDetails.members.map((member) => (
-                                                        <li key={member.ID} style={{
-                                                            display: 'flex',
-                                                            justifyContent: 'space-between',
-                                                            alignItems: 'center',
-                                                            marginBottom: '0.25rem'
-                                                        }}>
-                                                            <span>{member.FirstName} {member.LastName}</span>
-                                                            {onRemoveMember && (
-                                                                <button
-                                                                    className="secondary"
-                                                                    onClick={() => onRemoveMember(group.id, member.ID)}
-                                                                    style={{
-                                                                        fontSize: '0.85em',
-                                                                        padding: '0.2rem 0.5rem'
-                                                                    }}
-                                                                >
-                                                                    Remove
-                                                                </button>
-                                                            )}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                        {(!groupDetails.members || groupDetails.members.length === 0) && (
-                                            <div>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <strong>Members:</strong>
-                                                    {onAddMember && (
-                                                        <button className="secondary"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onAddMember(group.id);
-                                                                }}>
-                                                            Add Member
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <p style={{fontStyle: 'italic', color: '#666', marginTop: '0.5rem'}}>No
-                                                    members yet.</p>
-                                            </div>
-                                        )}
-                                        {showAddMemberForm === group.id && (
-                                            <div style={{
-                                                marginTop: '0.5rem',
-                                                padding: '0.75rem',
-                                                border: '1px solid #ccc',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#f9f9f9'
-                                            }}>
-                                                <h5 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Add Member to Group</h5>
-                                                <AddMemberToGroup
-                                                    groupId={group.id}
-                                                    onSuccess={onMemberSuccess || (() => {
-                                                        if (onAddMember) onAddMember(null);
-                                                    })}
-                                                    onCancel={() => {
-                                                        if (onAddMember) onAddMember(null);
+                                                >
+                                                    {showAddLeaderForm === group.id ? 'Cancel Adding Leader' : 'Add Leader'}
+                                                </button>
+                                            )}
+
+                                            {onAddMember && (
+                                                <button
+                                                    className="secondary"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onAddMember(showAddMemberForm === group.id ? null : group.id);
                                                     }}
-                                                />
-                                            </div>
-                                        )}
+                                                >
+                                                    {showAddMemberForm === group.id ? 'Cancel Adding Member' : 'Add Member'}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
@@ -253,4 +187,3 @@ function SmallGroupList({
 }
 
 export default SmallGroupList;
-

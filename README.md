@@ -24,16 +24,13 @@ CS125 Final Project: Youth Group Management System
 * Keep track of attendance
 * Register/ view registration for events
 * Take event notes
-* Should not be able to delete notes that are not theirs
 * Update list of youth group members or leaders 
-* Head pastor/ select leaders have master privilege and are able to grant other access
 
 **Students/ Parents:**
 * Ability to register for events
-* Ability to view but not edit small groups
+* Ability to view and edit small groups
 * View a schedule of past and upcoming events and small groups
 * Check into event
-* Should not be able to edit small groups, registration, or events
 
 ## Team Name:
 **Woman In Stem**

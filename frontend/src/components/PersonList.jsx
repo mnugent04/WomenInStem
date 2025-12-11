@@ -1,6 +1,6 @@
 import React from 'react';
 
-function PersonList({ people, onEdit, onDelete, onView }) {
+function PersonList({ people, onEdit, onDelete, onView, onViewProfile }) {
   return (
     <figure>
       <table role="grid">
@@ -9,7 +9,7 @@ function PersonList({ people, onEdit, onDelete, onView }) {
             <th scope="col">First Name</th>
             <th scope="col">Last Name</th>
             <th scope="col">Age</th>
-            <th scope="col" colSpan={onView ? "3" : "2"}>Actions</th>
+            <th scope="col" colSpan={onViewProfile ? "4" : onView ? "3" : "2"}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -18,6 +18,17 @@ function PersonList({ people, onEdit, onDelete, onView }) {
               <td>{person.firstName}</td>
               <td>{person.lastName}</td>
               <td>{person.age}</td>
+              {onViewProfile && (
+                <td>
+                  <button 
+                    className="secondary" 
+                    onClick={() => onViewProfile(person)}
+                    style={{ backgroundColor: '#2563eb', color: 'white' }}
+                  >
+                    View Profile
+                  </button>
+                </td>
+              )}
               {onView && (
                 <td>
                   <button className="secondary" onClick={() => onView(person)}>View Details</button>

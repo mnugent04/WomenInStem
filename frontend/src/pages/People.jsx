@@ -4,6 +4,7 @@ import PersonForm from '../components/PersonForm';
 import PersonNotes from '../components/PersonNotes';
 import PersonParentContacts from '../components/PersonParentContacts';
 import PersonRoles from '../components/PersonRoles';
+import PersonProfile from '../components/PersonProfile';
 import api from '../services/api';
 
 function People() {
@@ -12,6 +13,7 @@ function People() {
     const [error, setError] = useState(null);
     const [editingPerson, setEditingPerson] = useState(null);
     const [viewingPerson, setViewingPerson] = useState(null);
+    const [profilePersonId, setProfilePersonId] = useState(null);
 
     const fetchPeople = () => {
         setLoading(true);
@@ -89,6 +91,14 @@ function People() {
         setViewingPerson(null);
     };
 
+    const handleViewProfile = (person) => {
+        setProfilePersonId(person.id);
+    };
+
+    const handleCloseProfile = () => {
+        setProfilePersonId(null);
+    };
+
     if (loading) return <div>Loading...</div>;
     if (error) return <div>Error: {error.message}</div>;
 
@@ -151,8 +161,17 @@ function People() {
                         onEdit={handleEdit}
                         onDelete={handleDelete}
                         onView={handleView}
+                        onViewProfile={handleViewProfile}
                     />
                 </>
+            )}
+
+            {/* Comprehensive Profile Modal */}
+            {profilePersonId && (
+                <PersonProfile
+                    personId={profilePersonId}
+                    onClose={handleCloseProfile}
+                />
             )}
         </div>
     );

@@ -838,6 +838,195 @@ def get_person_roles(person_id: int):
             cnx.close()
 
 
+@app.get("/people/{person_id}/profile")
+def get_person_comprehensive_profile(person_id: int):
+    """
+    Gets a comprehensive profile of a person using complex joins.
+    Returns:
+    - Person details
+    - All roles (Attendee, Leader, Volunteer)
+    - Small groups they're a member of (with group details)
+    - Small groups they lead (with group details)
+    - Events they're registered for (with event details and registration info)
+    - Events they've attended (from AttendanceRecord with event details)
+    
+    This endpoint demonstrates complex JOINs across multiple tables.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # 1. Get person basic info
+        cursor.execute("""
+            SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age
+            FROM Person
+            WHERE ID = %s;
+        """, (person_id,))
+        person = cursor.fetchone()
+        
+        if not person:
+            raise HTTPException(404, "Person not found")
+        
+        # 2. Get roles with details (complex LEFT JOINs)
+        cursor.execute("""
+            SELECT 
+                A.ID AS attendeeId,
+                A.Guardian AS guardian,
+                L.ID AS leaderId,
+                V.ID AS volunteerId
+            FROM Person P
+            LEFT JOIN Attendee A ON P.ID = A.PersonID
+            LEFT JOIN Leader L ON P.ID = L.PersonID
+            LEFT JOIN Volunteer V ON P.ID = V.PersonID
+            WHERE P.ID = %s;
+        """, (person_id,))
+        roles = cursor.fetchone()
+        
+        # 3. Get small groups they're a member of (JOIN through SmallGroupMember)
+        cursor.execute("""
+            SELECT 
+                SG.ID AS groupId,
+                SG.Name AS groupName,
+                SGM.ID AS membershipId
+            FROM SmallGroupMember SGM
+            INNER JOIN SmallGroup SG ON SGM.SmallGroupID = SG.ID
+            WHERE SGM.AttendeeID = %s
+            ORDER BY SG.Name;
+        """, (person_id,))
+        member_groups = cursor.fetchall()
+        
+        # 4. Get small groups they lead (JOIN through SmallGroupLeader)
+        cursor.execute("""
+            SELECT 
+                SG.ID AS groupId,
+                SG.Name AS groupName,
+                SGL.ID AS leadershipId
+            FROM SmallGroupLeader SGL
+            INNER JOIN SmallGroup SG ON SGL.SmallGroupID = SG.ID
+            WHERE SGL.LeaderID = %s
+            ORDER BY SG.Name;
+        """, (person_id,))
+        leading_groups = cursor.fetchall()
+        
+        # 5. Get event registrations with event details (complex JOINs with role resolution)
+        # Try with VolunteerID first
+        try:
+            cursor.execute("""
+                SELECT 
+                    R.ID AS registrationId,
+                    R.EventID AS eventId,
+                    R.AttendeeID AS attendeeId,
+                    R.LeaderID AS leaderId,
+                    R.VolunteerID AS volunteerId,
+                    R.EmergencyContact AS emergencyContact,
+                    E.Name AS eventName,
+                    E.Type AS eventType,
+                    E.DateTime AS eventDateTime,
+                    E.Location AS eventLocation,
+                    E.Notes AS eventNotes,
+                    CASE 
+                        WHEN R.AttendeeID IS NOT NULL THEN 'Attendee'
+                        WHEN R.LeaderID IS NOT NULL THEN 'Leader'
+                        WHEN R.VolunteerID IS NOT NULL THEN 'Volunteer'
+                        ELSE 'Unknown'
+                    END AS registrationRole
+                FROM Registration R
+                INNER JOIN Event E ON R.EventID = E.ID
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                LEFT JOIN Volunteer V ON R.VolunteerID = V.ID
+                WHERE (A.PersonID = %s OR L.PersonID = %s OR V.PersonID = %s)
+                ORDER BY E.DateTime DESC;
+            """, (person_id, person_id, person_id))
+        except mysql.connector.Error:
+            # Fallback if VolunteerID column doesn't exist
+            cursor.execute("""
+                SELECT 
+                    R.ID AS registrationId,
+                    R.EventID AS eventId,
+                    R.AttendeeID AS attendeeId,
+                    R.LeaderID AS leaderId,
+                    NULL AS volunteerId,
+                    R.EmergencyContact AS emergencyContact,
+                    E.Name AS eventName,
+                    E.Type AS eventType,
+                    E.DateTime AS eventDateTime,
+                    E.Location AS eventLocation,
+                    E.Notes AS eventNotes,
+                    CASE 
+                        WHEN R.AttendeeID IS NOT NULL THEN 'Attendee'
+                        WHEN R.LeaderID IS NOT NULL THEN 'Leader'
+                        ELSE 'Unknown'
+                    END AS registrationRole
+                FROM Registration R
+                INNER JOIN Event E ON R.EventID = E.ID
+                LEFT JOIN Attendee A ON R.AttendeeID = A.ID
+                LEFT JOIN Leader L ON R.LeaderID = L.ID
+                WHERE (A.PersonID = %s OR L.PersonID = %s)
+                ORDER BY E.DateTime DESC;
+            """, (person_id, person_id))
+        registrations = cursor.fetchall()
+        
+        # 6. Get attendance records with event details (JOIN Event table)
+        cursor.execute("""
+            SELECT 
+                AR.ID AS attendanceId,
+                AR.EventID AS eventId,
+                E.Name AS eventName,
+                E.Type AS eventType,
+                E.DateTime AS eventDateTime,
+                E.Location AS eventLocation,
+                E.Notes AS eventNotes
+            FROM AttendanceRecord AR
+            INNER JOIN Event E ON AR.EventID = E.ID
+            WHERE AR.PersonID = %s
+            ORDER BY E.DateTime DESC;
+        """, (person_id,))
+        attendance_records = cursor.fetchall()
+        
+        # 7. Calculate statistics
+        total_registrations = len(registrations)
+        total_attended = len(attendance_records)
+        attendance_rate = round((total_attended / total_registrations * 100) if total_registrations > 0 else 0, 2)
+        
+        # Build comprehensive response
+        result = {
+            "person": person,
+            "roles": {
+                "isAttendee": roles["attendeeId"] is not None,
+                "isLeader": roles["leaderId"] is not None,
+                "isVolunteer": roles["volunteerId"] is not None,
+                "attendeeId": roles["attendeeId"],
+                "leaderId": roles["leaderId"],
+                "volunteerId": roles["volunteerId"],
+                "guardian": roles.get("guardian")
+            },
+            "smallGroups": {
+                "asMember": member_groups,
+                "asLeader": leading_groups,
+                "totalGroups": len(member_groups) + len(leading_groups)
+            },
+            "events": {
+                "registrations": registrations,
+                "attendance": attendance_records,
+                "statistics": {
+                    "totalRegistrations": total_registrations,
+                    "totalAttended": total_attended,
+                    "attendanceRate": attendance_rate
+                }
+            }
+        }
+        
+        return result
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
 @app.get("/smallgroups")
 def get_all_small_groups():
     """

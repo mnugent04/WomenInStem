@@ -1942,6 +1942,13 @@ async def read_demo():
     return os.path.join(os.path.dirname(__file__), "index.html")
 
 
+# --- GraphQL Integration ---
+# Uncomment the following lines to enable GraphQL endpoint
+# You'll need to install: pip install strawberry-graphql
+from graphql_app import graphql_app
+app.include_router(graphql_app, prefix="/graphql")
+
+
 if __name__ == "__main__":
     print("\nTo run this FastAPI application:")
     print("1. Make sure you have installed the required packages: pip install -r requirements.txt")

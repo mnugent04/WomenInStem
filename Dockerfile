@@ -25,4 +25,6 @@ ENV DB_HOST="host.docker.internal"
 # Run uvicorn server
 # The --host 0.0.0.0 makes the server accessible from outside the container.
 # We use --app-dir to add the 'python' directory to the PYTHONPATH so modules can be found.
-CMD ["uvicorn", "graphql_main:app", "--host", "0.0.0.0", "--port", "8099", "--app-dir", "/app"]
+
+CMD ["uvicorn", "youthGroupFastAPI:app", "--host", "0.0.0.0", "--port", "8099", "--app-dir", "/app"]
+

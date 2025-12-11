@@ -146,3 +146,276 @@ http://127.0.0.1:8000/people
 * Make sure your config and requirements are up to date
 * Run as normal and go to
 * http://127.0.0.1:8000/event/{eventId}/live-checkins
+
+# GraphQL Setup Guide
+
+This guide explains how to set up and use the GraphQL API for the Youth Group Management System.
+
+## Installation
+
+First, install the required GraphQL package:
+
+```bash
+pip install strawberry-graphql
+```
+
+## Integration with FastAPI
+
+The GraphQL schema is defined in `graphql_schema.py` and can be integrated with your FastAPI app.
+
+### Option 1: Add to existing FastAPI app
+
+In `youthGroupFastAPI.py`, uncomment and add these lines at the end (before `if __name__ == "__main__"`):
+
+```python
+# --- GraphQL Integration ---
+from graphql_app import graphql_app
+app.include_router(graphql_app, prefix="/graphql")
+```
+
+### Option 2: Run GraphQL separately
+
+You can also run the GraphQL endpoint separately if needed.
+
+## Accessing GraphQL
+
+Once integrated, you can access:
+
+1. **GraphQL Playground (Interactive UI)**: `http://127.0.0.1:8099/graphql`
+2. **GraphQL Endpoint**: `http://127.0.0.1:8099/graphql` (POST requests)
+
+## Example Queries
+
+### Get all people
+```graphql
+query {
+  people {
+    id
+    firstName
+    lastName
+    age
+  }
+}
+```
+
+### Get a specific person
+```graphql
+query {
+  person(personId: 1) {
+    id
+    firstName
+    lastName
+    age
+  }
+}
+```
+
+### Get all events
+```graphql
+query {
+  events {
+    id
+    name
+    type
+    dateTime
+    location
+    notes
+  }
+}
+```
+
+### Get small group with members and leaders
+```graphql
+query {
+  smallGroup(groupId: 1) {
+    id
+    name
+  }
+  smallGroupMembers(groupId: 1) {
+    id
+    firstName
+    lastName
+  }
+  smallGroupLeaders(groupId: 1) {
+    id
+    firstName
+    lastName
+  }
+}
+```
+
+### Get comprehensive event summary (all DBMS)
+```graphql
+query {
+  comprehensiveEventSummary(eventId: 1) {
+    event {
+      id
+      name
+      type
+      dateTime
+      location
+    }
+    registrations {
+      total
+      attendees
+      leaders
+      volunteers
+    }
+    liveCheckIns {
+      count
+      source
+    }
+    notes {
+      count
+      source
+    }
+    summary {
+      totalRegistered
+      totalCheckedIn
+      attendanceRate
+      notesCount
+    }
+    dataSources {
+      eventInfo
+      registrations
+      liveCheckIns
+      notes
+    }
+  }
+}
+```
+
+### Get person notes from MongoDB
+```graphql
+query {
+  personNotes(personId: 1) {
+    id
+    text
+    category
+    createdBy
+    created
+  }
+}
+```
+
+### Get live check-ins from Redis
+```graphql
+query {
+  liveCheckIns(eventId: 1) {
+    eventId
+    count
+    message
+    students {
+      studentId
+      firstName
+      lastName
+      checkInTime
+    }
+  }
+}
+```
+
+## Example Mutations
+
+### Create a person
+```graphql
+mutation {
+  createPerson(person: {
+    firstName: "John"
+    lastName: "Doe"
+    age: 25
+  }) {
+    id
+    firstName
+    lastName
+    age
+  }
+}
+```
+
+### Create an event
+```graphql
+mutation {
+  createEvent(event: {
+    name: "Youth Night"
+    type: "Weekly Gathering"
+    dateTime: "2025-02-15T18:00:00"
+    location: "Main Hall"
+    notes: "Games and message"
+  }) {
+    id
+    name
+    type
+    dateTime
+    location
+  }
+}
+```
+
+### Register for an event
+```graphql
+mutation {
+  registerForEvent(
+    eventId: 1
+    registration: {
+      attendeeId: 1
+      emergencyContact: "555-1234"
+    }
+  ) {
+    id
+    eventId
+    attendeeId
+    emergencyContact
+  }
+}
+```
+
+### Add member to small group
+```graphql
+mutation {
+  addMemberToGroup(
+    groupId: 1
+    input: {
+      attendeeId: 1
+    }
+  ) {
+    id
+    attendeeId
+    smallGroupId
+  }
+}
+```
+
+### Add person note
+```graphql
+mutation {
+  addPersonNote(
+    personId: 1
+    note: {
+      text: "Great participation in today's activity"
+      category: "Positive"
+      createdBy: "Leader Name"
+    }
+  ) {
+    id
+    text
+    category
+    createdBy
+    created
+  }
+}
+```
+
+## Key Features
+
+1. **Multi-DBMS Support**: Queries can fetch data from MySQL, MongoDB, and Redis
+2. **Flexible Queries**: Request only the fields you need
+3. **Type Safety**: Strong typing with Strawberry
+4. **Comprehensive Endpoints**: Special queries that combine data from all databases
+
+## Notes
+
+- The GraphQL schema reuses the same database connections as the REST API
+- All resolvers handle errors gracefully
+- MongoDB and Redis queries will return empty/null if those services aren't available
+- The schema follows the same patterns as your professor's example

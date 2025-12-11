@@ -406,6 +406,15 @@ mutation {
 }
 ```
 
+# Running the Frontend  
+* make sure the backend is running
+* open a new tab in your terminal and cd into frontend
+* make sure you have npm installed, and an newer version
+* run 
+```bash
+npm run dev
+```
+
 ## Key Features
 
 1. **Multi-DBMS Support**: Queries can fetch data from MySQL, MongoDB, and Redis

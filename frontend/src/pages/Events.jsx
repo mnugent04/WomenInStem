@@ -3,7 +3,7 @@ import EventList from '../components/EventList';
 import EventForm from '../components/EventForm';
 import RegistrationForm from '../components/RegistrationForm';
 import api from '../services/api';
-import EventComprehensive from "../components/EventComprehensive.jsx";
+
 function Events() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,9 +12,12 @@ function Events() {
   const [eventRegistrations, setEventRegistrations] = useState(null);
   const [loadingRegistrations, setLoadingRegistrations] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
+
+  // NEW: Toggles create-event dropdown
+  const [showCreateDropdown, setShowCreateDropdown] = useState(false);
+
   const [registeringForEventId, setRegisteringForEventId] = useState(null);
-  const [eventSummary, setEventSummary] = useState(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
+
   const fetchEvents = () => {
     setLoading(true);
     api.get('/events')
@@ -36,83 +39,59 @@ function Events() {
     if (expandedEventId === eventId) {
       setExpandedEventId(null);
       setEventRegistrations(null);
-      setEventSummary(null);
       return;
     }
 
     setExpandedEventId(eventId);
     setLoadingRegistrations(true);
-    setLoadingSummary(true);
     setEventRegistrations(null);
-    setEventSummary(null);
 
     try {
-      // Fetch registrations
       const regResponse = await api.get(`/events/${eventId}/registrations`);
       setEventRegistrations(regResponse.data);
     } catch (error) {
-      console.error("Error fetching event registrations:", error);
       setError(error);
     } finally {
       setLoadingRegistrations(false);
     }
-
-    try {
-      // Fetch comprehensive summary
-      const summaryResponse = await api.get(`/events/${eventId}/comprehensive`);
-      setEventSummary(summaryResponse.data);
-    } catch (error) {
-      console.error("Error fetching summary:", error);
-      setError(error);
-    } finally {
-      setLoadingSummary(false);
-    }
   };
-
 
   const handleSave = (eventData) => {
     if (eventData.id) {
       // UPDATE
-      const { id, ...updateData } = eventData; // remove id from the body
+      const { id, ...updateData } = eventData;
 
       api.patch(`/events/${id}`, updateData)
-          .then(response => {
-            setEditingEvent(null);
-            fetchEvents();  // refresh the list
-          })
-          .catch(error => {
-            console.error('Error updating event:', error);
-            setError(error);
-          });
-
+        .then(() => {
+          setEditingEvent(null);
+          fetchEvents();
+        })
+        .catch(error => setError(error));
     } else {
       // CREATE
       const { id, ...createData } = eventData;
 
       api.post('/events', createData)
-          .then(response => {
-            setEditingEvent(null);
-            fetchEvents();
-          })
-          .catch(error => {
-            console.error('Error creating event:', error);
-            setError(error);
-          });
+        .then(() => {
+          setShowCreateDropdown(false); // auto-close after create
+          fetchEvents();
+        })
+        .catch(error => setError(error));
     }
   };
 
-
   const handleCancel = () => {
     setEditingEvent(null);
+    setShowCreateDropdown(false);
   };
 
   const handleEdit = (event) => {
     setEditingEvent(event);
+    setShowCreateDropdown(true); // open dropdown when editing
   };
 
   const handleDelete = (eventId) => {
     if (window.confirm('Are you sure you want to delete this event?')) {
-      // Note: Backend doesn't have DELETE endpoint yet
       console.warn('Event delete not yet implemented in backend');
     }
   };
@@ -122,7 +101,6 @@ function Events() {
   };
 
   const handleRegistrationSuccess = () => {
-    // Refresh registrations if the event is expanded
     if (expandedEventId) {
       handleEventClick(expandedEventId);
     }
@@ -135,19 +113,57 @@ function Events() {
   return (
     <div>
       <h1>Events</h1>
-      <EventForm event={editingEvent} onSave={handleSave} onCancel={handleCancel} />
+
+      {/* --- CREATE EVENT DROPDOWN BUTTON --- */}
+      <button
+        onClick={() => {
+          setEditingEvent(null);
+          setShowCreateDropdown(prev => !prev);
+        }}
+        style={{
+          padding: "10px 16px",
+          color: "white",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer",
+          marginBottom: "1rem"
+        }}
+      >
+        {showCreateDropdown || editingEvent ? "Close Form" : "Create New Event"}
+      </button>
+
+      {/* --- DROPDOWN CONTENT --- */}
+      {showCreateDropdown || editingEvent ? (
+        <div style={{
+          marginBottom: "1.5rem",
+          padding: "1rem",
+          border: "1px solid #ccc",
+          borderRadius: "6px",
+          background: "#f9f9f9"
+        }}>
+          <EventForm event={editingEvent} onSave={handleSave} onCancel={handleCancel} />
+        </div>
+      ) : null}
+
       {registeringForEventId && (
-        <div style={{ marginTop: '2rem', marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '4px' }}>
+        <div style={{
+          marginTop: '2rem',
+          marginBottom: '2rem',
+          padding: '1rem',
+          border: '1px solid #ccc',
+          borderRadius: '4px'
+        }}>
           <h3>Register for Event</h3>
-          <RegistrationForm 
-            eventId={registeringForEventId} 
+          <RegistrationForm
+            eventId={registeringForEventId}
             onSuccess={handleRegistrationSuccess}
             onCancel={() => setRegisteringForEventId(null)}
           />
         </div>
       )}
-      <EventList 
-        events={events} 
+
+      <EventList
+        events={events}
         onEventClick={handleEventClick}
         expandedEventId={expandedEventId}
         eventRegistrations={loadingRegistrations ? null : eventRegistrations}
@@ -155,13 +171,11 @@ function Events() {
         onDelete={handleDelete}
         onRegister={handleRegisterClick}
       />
+
       {loadingRegistrations && expandedEventId && (
-        <div style={{ marginTop: '1rem', fontStyle: 'italic' }}>Loading registrations...</div>
-      )}
-      {expandedEventId && (
-          <div style={{ marginTop: '2rem' }}>
-            <EventComprehensive eventId={expandedEventId} />
-          </div>
+        <div style={{ marginTop: '1rem', fontStyle: 'italic' }}>
+          Loading registrations...
+        </div>
       )}
     </div>
   );

@@ -104,7 +104,7 @@ function PersonNotes({ personId }) {
                   )}
                 </div>
                 <button 
-                  className="secondary outline" 
+                  className="secondary"
                   onClick={() => handleDeleteNote(note._id)}
                   style={{ marginLeft: '1rem' }}
                 >
@@ -122,4 +122,5 @@ function PersonNotes({ personId }) {
 }
 
 export default PersonNotes;
+
 

@@ -1,6 +1,6 @@
 import mysql.connector
 import redis
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Body
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 import os
@@ -853,6 +853,66 @@ def get_all_small_groups():
         cnx.close()
 
 
+@app.post("/smallgroups")
+def create_small_group(body: dict = Body(...)):
+    """
+    Creates a new small group.
+    """
+    name = body.get("name")
+    if not name:
+        raise HTTPException(400, "name is required")
+    
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroup;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
+        cursor.execute("""
+            INSERT INTO SmallGroup (ID, Name)
+            VALUES (%s, %s);
+        """, (next_id, name.strip()))
+        cnx.commit()
+        
+        return {"message": "Small group created successfully", "id": next_id, "name": name.strip()}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/smallgroups/{group_id}")
+def delete_small_group(group_id: int):
+    """
+    Deletes a small group by ID.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Check if group exists
+        cursor.execute("SELECT ID FROM SmallGroup WHERE ID = %s;", (group_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Small group not found")
+        
+        # Delete the group (cascade should handle members/leaders if foreign keys are set up)
+        cursor.execute("DELETE FROM SmallGroup WHERE ID = %s;", (group_id,))
+        cnx.commit()
+        
+        return {"message": "Small group deleted successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
 @app.get("/smallgroups/{group_id}")
 def get_small_group(group_id: int):
     """
@@ -930,10 +990,11 @@ def get_small_group_leaders(group_id: int):
 
 
 @app.post("/smallgroups/{group_id}/members")
-def add_member_to_group(group_id: int, body: dict):
+def add_member_to_group(group_id: int, body: dict = Body(...)):
     """
-      Adds a member to a small group by ID
-      """
+    Adds a member (attendee) to a small group by ID.
+    Note: attendeeID should be a Person ID of someone who is an Attendee.
+    """
     attendee_id = body.get("attendeeID")
     if not attendee_id:
         raise HTTPException(400, "Missing attendeeID")
@@ -941,24 +1002,77 @@ def add_member_to_group(group_id: int, body: dict):
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        
+        # Check if group exists
+        cursor.execute("SELECT ID FROM SmallGroup WHERE ID = %s;", (group_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Small group not found")
+        
+        # Check if person is already a member
+        cursor.execute("""
+            SELECT ID FROM SmallGroupMember 
+            WHERE AttendeeID = %s AND SmallGroupID = %s;
+        """, (attendee_id, group_id))
+        if cursor.fetchone():
+            raise HTTPException(400, "Person is already a member of this group")
 
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupMember;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
         cursor.execute("""
             INSERT INTO SmallGroupMember (ID, AttendeeID, SmallGroupID)
-            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM SmallGroupMember), %s, %s);
-        """, (attendee_id, group_id))
+            VALUES (%s, %s, %s);
+        """, (next_id, attendee_id, group_id))
         cnx.commit()
 
         return {"message": "Member added successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        cursor.close()
-        cnx.close()
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/smallgroups/{group_id}/members/{member_id}")
+def remove_member_from_group(group_id: int, member_id: int):
+    """
+    Removes a member from a small group.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        cursor.execute("""
+            SELECT ID FROM SmallGroupMember 
+            WHERE ID = %s AND SmallGroupID = %s;
+        """, (member_id, group_id))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Member not found in this group")
+        
+        cursor.execute("""
+            DELETE FROM SmallGroupMember 
+            WHERE ID = %s AND SmallGroupID = %s;
+        """, (member_id, group_id))
+        cnx.commit()
+        
+        return {"message": "Member removed successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
 
 
 @app.post("/smallgroups/{group_id}/leaders")
-def add_leader_to_group(group_id: int, body: dict):
+def add_leader_to_group(group_id: int, body: dict = Body(...)):
     """
-      Adds a leader to a small group
-      """
+    Adds a leader to a small group.
+    Note: leaderID should be a Person ID of someone who is a Leader.
+    """
     leader_id = body.get("leaderID")
     if not leader_id:
         raise HTTPException(400, "Missing leaderID")
@@ -966,17 +1080,69 @@ def add_leader_to_group(group_id: int, body: dict):
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor()
+        
+        # Check if group exists
+        cursor.execute("SELECT ID FROM SmallGroup WHERE ID = %s;", (group_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Small group not found")
+        
+        # Check if person is already a leader
+        cursor.execute("""
+            SELECT ID FROM SmallGroupLeader 
+            WHERE LeaderID = %s AND SmallGroupID = %s;
+        """, (leader_id, group_id))
+        if cursor.fetchone():
+            raise HTTPException(400, "Person is already a leader of this group")
 
+        # Get next ID
+        cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupLeader;")
+        next_id = cursor.fetchone()[0]
+        
+        # Insert
         cursor.execute("""
             INSERT INTO SmallGroupLeader (ID, LeaderID, SmallGroupID)
-            VALUES ((SELECT IFNULL(MAX(ID), 0) + 1 FROM SmallGroupLeader), %s, %s);
-        """, (leader_id, group_id))
+            VALUES (%s, %s, %s);
+        """, (next_id, leader_id, group_id))
         cnx.commit()
 
         return {"message": "Leader added successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
     finally:
-        cursor.close()
-        cnx.close()
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+
+@app.delete("/smallgroups/{group_id}/leaders/{leader_id}")
+def remove_leader_from_group(group_id: int, leader_id: int):
+    """
+    Removes a leader from a small group.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        cursor.execute("""
+            SELECT ID FROM SmallGroupLeader 
+            WHERE ID = %s AND SmallGroupID = %s;
+        """, (leader_id, group_id))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Leader not found in this group")
+        
+        cursor.execute("""
+            DELETE FROM SmallGroupLeader 
+            WHERE ID = %s AND SmallGroupID = %s;
+        """, (leader_id, group_id))
+        cnx.commit()
+        
+        return {"message": "Leader removed successfully"}
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
 
 
 from datetime import datetime

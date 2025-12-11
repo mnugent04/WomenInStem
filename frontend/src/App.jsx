@@ -20,7 +20,7 @@ function App() {
               </ul>
               <ul>
                 <li>
-                  <Link to="/" role="button" className="secondary">Home</Link>
+                  <Link to="/" role="button" >Home</Link>
                 </li>
                 <li>
                   <Link to="/people" role="button">People</Link>

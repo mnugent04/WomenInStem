@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import EventList from '../components/EventList';
 import EventForm from '../components/EventForm';
 import RegistrationForm from '../components/RegistrationForm';
+import EventTypeManager from '../components/EventTypeManager';
 import api from '../services/api';
 
 function Events() {
@@ -17,6 +18,7 @@ function Events() {
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
 
   const [registeringForEventId, setRegisteringForEventId] = useState(null);
+  const [showEventTypes, setShowEventTypes] = useState(false);
 
   const fetchEvents = () => {
     setLoading(true);
@@ -112,7 +114,35 @@ function Events() {
 
   return (
     <div>
-      <h1>Events</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h1>Events</h1>
+        <button 
+          className="secondary" 
+          onClick={() => setShowEventTypes(!showEventTypes)}
+          style={{
+            backgroundColor: showEventTypes ? '#6b7280' : '#2563eb',
+            color: 'white',
+            border: 'none',
+            padding: '0.5rem 1rem',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          {showEventTypes ? 'Hide Event Types' : 'Manage Event Types'}
+        </button>
+      </div>
+
+      {showEventTypes && (
+        <div style={{
+          marginBottom: '2rem',
+          padding: '1.5rem',
+          border: '1px solid #ccc',
+          borderRadius: '4px',
+          backgroundColor: '#fafafa'
+        }}>
+          <EventTypeManager />
+        </div>
+      )}
 
       {/* --- CREATE EVENT DROPDOWN BUTTON --- */}
       <button

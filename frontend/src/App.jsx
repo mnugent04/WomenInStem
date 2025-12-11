@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import People from './pages/People';
 import Events from './pages/Events';
 import SmallGroups from './pages/SmallGroups';
+import Search from './pages/Search';
 import './App.css';
 
 function App() {
@@ -31,6 +32,9 @@ function App() {
                 <li>
                   <Link to="/small-groups" role="button">Small Groups</Link>
                 </li>
+                <li>
+                  <Link to="/search" role="button">Search</Link>
+                </li>
               </ul>
             </nav>
           </aside>
@@ -40,6 +44,7 @@ function App() {
               <Route path="/people" element={<People />} />
               <Route path="/events" element={<Events />} />
               <Route path="/small-groups" element={<SmallGroups />} />
+              <Route path="/search" element={<Search />} />
             </Routes>
           </main>
         </div>

@@ -1746,6 +1746,22 @@ def get_all_events():
 
 
 # mongodb!
+@app.get("/event-types")
+def get_all_event_types():
+    """
+    Gets all event types from MongoDB.
+    """
+    try:
+        db = get_mongo_db()
+        collection = db["eventTypes"]
+        event_types = list(collection.find({}))
+        for et in event_types:
+            et["_id"] = str(et["_id"])
+        return event_types
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+
 @app.get("/event-type/{event_type}")
 def get_event_type(event_type: str):
     """
@@ -1771,6 +1787,255 @@ def get_event_type(event_type: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+
+@app.post("/event-types")
+def create_event_type(body: dict):
+    """
+    Creates a new event type in MongoDB.
+    """
+    try:
+        db = get_mongo_db()
+        collection = db["eventTypes"]
+        
+        if "event_type" not in body:
+            raise HTTPException(400, "event_type field is required")
+        
+        # Check if already exists
+        existing = collection.find_one({"event_type": body["event_type"]})
+        if existing:
+            raise HTTPException(400, f"Event type '{body['event_type']}' already exists")
+        
+        # Add created timestamp
+        body["created"] = datetime.utcnow()
+        
+        result = collection.insert_one(body)
+        new_doc = collection.find_one({"_id": result.inserted_id})
+        new_doc["_id"] = str(new_doc["_id"])
+        return new_doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+
+@app.patch("/event-types/{event_type}")
+def update_event_type(event_type: str, body: dict):
+    """
+    Updates an event type in MongoDB.
+    """
+    try:
+        db = get_mongo_db()
+        collection = db["eventTypes"]
+        
+        body["updated"] = datetime.utcnow()
+        
+        updated = collection.update_one(
+            {"event_type": event_type},
+            {"$set": body}
+        )
+        
+        if updated.matched_count == 0:
+            raise HTTPException(404, "Event type not found")
+        
+        updated_doc = collection.find_one({"event_type": event_type})
+        updated_doc["_id"] = str(updated_doc["_id"])
+        return updated_doc
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+
+@app.delete("/event-types/{event_type}")
+def delete_event_type(event_type: str):
+    """
+    Deletes an event type from MongoDB.
+    """
+    try:
+        db = get_mongo_db()
+        collection = db["eventTypes"]
+        
+        deleted = collection.delete_one({"event_type": event_type})
+        
+        if deleted.deleted_count == 0:
+            raise HTTPException(404, "Event type not found")
+        
+        return {"message": f"Event type '{event_type}' deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MongoDB error: {e}")
+
+
+@app.get("/search")
+def search_all(query: str):
+    """
+    Comprehensive search across events, people, and roles.
+    Searches:
+    - Events by name, type, location
+    - People by name
+    - People by role (leader, attendee, volunteer)
+    - Event types from MongoDB
+    
+    Returns results grouped by category.
+    """
+    try:
+        results = {
+            "query": query,
+            "events": [],
+            "people": [],
+            "roles": {
+                "leaders": [],
+                "attendees": [],
+                "volunteers": []
+            },
+            "eventTypes": []
+        }
+        
+        query_lower = query.lower().strip()
+        
+        # Search events (MySQL)
+        try:
+            cnx = db_pool.get_connection()
+            cursor = cnx.cursor(dictionary=True)
+            
+            # Search events by name, type, or location
+            cursor.execute("""
+                SELECT ID AS id, Name AS name, Type AS type,
+                       DateTime AS dateTime, Location AS location, Notes AS notes
+                FROM Event
+                WHERE LOWER(Name) LIKE %s 
+                   OR LOWER(Type) LIKE %s 
+                   OR LOWER(Location) LIKE %s
+                ORDER BY DateTime DESC
+                LIMIT 20;
+            """, (f"%{query_lower}%", f"%{query_lower}%", f"%{query_lower}%"))
+            results["events"] = cursor.fetchall()
+            
+            # Search people by name
+            cursor.execute("""
+                SELECT ID AS id, FirstName AS firstName, LastName AS lastName, Age AS age
+                FROM Person
+                WHERE LOWER(FirstName) LIKE %s 
+                   OR LOWER(LastName) LIKE %s
+                   OR LOWER(CONCAT(FirstName, ' ', LastName)) LIKE %s
+                ORDER BY LastName, FirstName
+                LIMIT 20;
+            """, (f"%{query_lower}%", f"%{query_lower}%", f"%{query_lower}%"))
+            results["people"] = cursor.fetchall()
+            
+            # Search by role keywords
+            if "leader" in query_lower or "lead" in query_lower:
+                cursor.execute("""
+                    SELECT L.ID AS id, P.ID AS personId, P.FirstName AS firstName, P.LastName AS lastName
+                    FROM Leader L
+                    JOIN Person P ON L.PersonID = P.ID
+                    ORDER BY P.LastName, P.FirstName;
+                """)
+                results["roles"]["leaders"] = cursor.fetchall()
+            
+            if "attendee" in query_lower or "student" in query_lower or "youth" in query_lower:
+                cursor.execute("""
+                    SELECT A.ID AS id, A.PersonID AS personId, P.FirstName AS firstName, 
+                           P.LastName AS lastName, A.Guardian AS guardian
+                    FROM Attendee A
+                    JOIN Person P ON A.PersonID = P.ID
+                    ORDER BY P.LastName, P.FirstName;
+                """)
+                results["roles"]["attendees"] = cursor.fetchall()
+            
+            if "volunteer" in query_lower:
+                cursor.execute("""
+                    SELECT V.ID AS id, V.PersonID AS personId, P.FirstName AS firstName, P.LastName AS lastName
+                    FROM Volunteer V
+                    JOIN Person P ON V.PersonID = P.ID
+                    ORDER BY P.LastName, P.FirstName;
+                """)
+                results["roles"]["volunteers"] = cursor.fetchall()
+            
+            cursor.close()
+            cnx.close()
+        except mysql.connector.Error as err:
+            print(f"MySQL search error: {err}")
+        
+        # Search event types (MongoDB)
+        try:
+            db = get_mongo_db()
+            collection = db["eventTypes"]
+            
+            # Use regex for case-insensitive search
+            event_types = list(collection.find({
+                "$or": [
+                    {"event_type": {"$regex": query_lower, "$options": "i"}},
+                    {"description": {"$regex": query_lower, "$options": "i"}}
+                ]
+            }))
+            
+            for et in event_types:
+                et["_id"] = str(et["_id"])
+            results["eventTypes"] = event_types
+        except Exception as e:
+            print(f"MongoDB search error: {e}")
+        
+        # Calculate totals
+        results["totals"] = {
+            "events": len(results["events"]),
+            "people": len(results["people"]),
+            "leaders": len(results["roles"]["leaders"]),
+            "attendees": len(results["roles"]["attendees"]),
+            "volunteers": len(results["roles"]["volunteers"]),
+            "eventTypes": len(results["eventTypes"])
+        }
+        
+        return results
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {e}")
+
+
+@app.get("/events/by-type/{event_type}")
+def get_events_by_type(event_type: str):
+    """
+    Gets all events of a specific type, including MongoDB event type details.
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # Get events from MySQL
+        cursor.execute("""
+            SELECT ID AS id, Name AS name, Type AS type,
+                   DateTime AS dateTime, Location AS location, Notes AS notes
+            FROM Event
+            WHERE Type = %s
+            ORDER BY DateTime DESC;
+        """, (event_type,))
+        events = cursor.fetchall()
+        
+        cursor.close()
+        cnx.close()
+        
+        # Get event type details from MongoDB
+        event_type_details = None
+        try:
+            db = get_mongo_db()
+            collection = db["eventTypes"]
+            event_type_details = collection.find_one({"event_type": event_type})
+            if event_type_details:
+                event_type_details["_id"] = str(event_type_details["_id"])
+        except Exception as e:
+            print(f"MongoDB error (non-fatal): {e}")
+        
+        return {
+            "eventType": event_type,
+            "eventTypeDetails": event_type_details,
+            "events": events,
+            "count": len(events)
+        }
+        
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
 
 # mongo db notes for person

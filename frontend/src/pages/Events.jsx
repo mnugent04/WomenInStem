@@ -66,6 +66,7 @@ function Events() {
       api.patch(`/events/${id}`, updateData)
         .then(() => {
           setEditingEvent(null);
+          setShowCreateDropdown(false); // close form after update
           fetchEvents();
         })
         .catch(error => setError(error));

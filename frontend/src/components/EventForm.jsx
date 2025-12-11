@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import api from '../services/api';
 
 function EventForm({ event, onSave, onCancel }) {
   const [formData, setFormData] = useState({
@@ -8,6 +9,21 @@ function EventForm({ event, onSave, onCancel }) {
     location: '',
     notes: '',
   });
+  const [eventTypes, setEventTypes] = useState([]);
+  const [loadingTypes, setLoadingTypes] = useState(true);
+
+  useEffect(() => {
+    // Fetch available event types
+    api.get('/event-types')
+      .then(response => {
+        setEventTypes(response.data || []);
+        setLoadingTypes(false);
+      })
+      .catch(error => {
+        console.error('Error fetching event types:', error);
+        setLoadingTypes(false);
+      });
+  }, []);
 
   useEffect(() => {
     if (event) {
@@ -67,14 +83,29 @@ function EventForm({ event, onSave, onCancel }) {
           onChange={handleChange}
           required
         />
-        <input
-          type="text"
+        <select
           name="type"
-          placeholder="Event Type"
           value={formData.type}
           onChange={handleChange}
           required
-        />
+          style={{
+            padding: '0.5rem',
+            borderRadius: '4px',
+            border: '1px solid #ccc',
+            fontSize: '1rem'
+          }}
+        >
+          <option value="">Select Event Type</option>
+          {eventTypes.map((eventType) => (
+            <option key={eventType.event_type} value={eventType.event_type}>
+              {eventType.event_type}
+            </option>
+          ))}
+          {/* Show current type if it's not in the list (for editing old events) */}
+          {formData.type && !eventTypes.some(et => et.event_type === formData.type) && (
+            <option value={formData.type}>{formData.type} (not in list)</option>
+          )}
+        </select>
         <input
           type="datetime-local"
           name="dateTime"

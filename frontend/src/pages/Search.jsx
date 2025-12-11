@@ -18,6 +18,7 @@ function Search() {
         <p style={{ color: '#6b7280', marginBottom: '0.75rem', lineHeight: 1.5 }}>
           Search across events, people, roles (leader, attendee, volunteer), and event types.
         </p>
+        {/* The SearchBar component will contain the bigger input field now */}
         <SearchBar onResults={setSearchResults} />
       </div>
 
@@ -37,4 +38,3 @@ function Search() {
 }
 
 export default Search;
-

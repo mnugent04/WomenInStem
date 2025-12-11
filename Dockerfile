@@ -1,20 +1,20 @@
-"""
-Dockerfile - Container Definition for Youth Group API
+#
+#Dockerfile - Container Definition for Youth Group API
+#
+#This file defines how to build a Docker container that runs the FastAPI application.
+#Docker containers package an application with all its dependencies into a portable unit.
+#
+#Build Process:
+#1. Start with a base Python image (contains Python runtime)
+#2. Set up working directory
+#3. Install dependencies from requirements.txt
+#4. Copy application code
+#5. Configure networking and environment
+#6. Define startup command
+#
+#To build: docker build -t youth-group-api .
+#To run: docker run -p 8099:8099 youth-group-api
 
-This file defines how to build a Docker container that runs the FastAPI application.
-Docker containers package an application with all its dependencies into a portable unit.
-
-Build Process:
-1. Start with a base Python image (contains Python runtime)
-2. Set up working directory
-3. Install dependencies from requirements.txt
-4. Copy application code
-5. Configure networking and environment
-6. Define startup command
-
-To build: docker build -t youth-group-api .
-To run: docker run -p 8099:8099 youth-group-api
-"""
 
 # Use an official Python runtime as a parent image
 # python:3.11-slim is a lightweight Python 3.11 image (smaller than full Python image)

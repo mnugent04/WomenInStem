@@ -94,8 +94,20 @@ function Events() {
   };
 
   const handleDelete = (eventId) => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
-      console.warn('Event delete not yet implemented in backend');
+    if (window.confirm('Are you sure you want to delete this event? This will also delete all registrations and related data.')) {
+      api.delete(`/events/${eventId}`)
+        .then(() => {
+          fetchEvents(); // Refresh the event list
+          if (expandedEventId === eventId) {
+            setExpandedEventId(null); // Close expanded view if deleting the expanded event
+            setEventRegistrations(null);
+          }
+        })
+        .catch(error => {
+          console.error('Error deleting event:', error);
+          alert('Error deleting event: ' + (error.response?.data?.detail || error.message));
+          setError(error);
+        });
     }
   };
 

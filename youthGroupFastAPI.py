@@ -1815,6 +1815,84 @@ def update_event(event_id: int, event: EventUpdate):
 
 
 
+@app.delete("/events/{event_id}")
+def delete_event(event_id: int):
+    """
+    Deletes an event by ID.
+    
+    Endpoint: DELETE /events/{event_id}
+    Path Parameter: event_id - The ID of the event to delete
+    Returns: Success message
+    
+    Deletion Pattern:
+    1. Verify event exists before deleting
+    2. Delete related data (registrations, attendance records, etc.)
+    3. Delete event notes from MongoDB
+    4. Delete Redis check-in data
+    5. Delete the event itself
+    6. Commit transaction
+    
+    Note: This performs cascading deletes manually since foreign key
+    constraints may not be set up with CASCADE.
+    
+    Raises:
+        HTTPException 404: If event not found
+        HTTPException 500: If database error occurs
+    """
+    try:
+        cnx = db_pool.get_connection()
+        cursor = cnx.cursor()
+        
+        # Verify event exists before deleting
+        cursor.execute("SELECT ID FROM Event WHERE ID = %s;", (event_id,))
+        if not cursor.fetchone():
+            raise HTTPException(404, "Event not found")
+        
+        # Delete related registrations (if foreign keys don't cascade)
+        cursor.execute("DELETE FROM Registration WHERE EventID = %s;", (event_id,))
+        
+        # Delete related attendance records (if they exist)
+        try:
+            cursor.execute("DELETE FROM AttendanceRecord WHERE EventID = %s;", (event_id,))
+        except mysql.connector.Error:
+            # Table might not exist, ignore error
+            pass
+        
+        # Delete event notes from MongoDB
+        try:
+            db = get_mongo_db()
+            notes_collection = db["eventNotes"]
+            notes_collection.delete_many({"eventId": event_id})
+        except Exception as e:
+            # MongoDB might not be available, log but don't fail
+            print(f"MongoDB error deleting event notes (non-fatal): {e}")
+        
+        # Delete Redis check-in data
+        try:
+            r = get_redis_conn()
+            checked_in_key = f"event:{event_id}:checkedIn"
+            times_key = f"event:{event_id}:checkInTimes"
+            r.delete(checked_in_key)  # Delete SET
+            r.delete(times_key)       # Delete HASH
+        except Exception as e:
+            # Redis might not be available, log but don't fail
+            print(f"Redis error deleting check-in data (non-fatal): {e}")
+        
+        # Delete the event itself
+        cursor.execute("DELETE FROM Event WHERE ID = %s;", (event_id,))
+        cnx.commit()  # Save all deletions
+        
+        return {"message": f"Event {event_id} deleted successfully"}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except mysql.connector.Error as err:
+        raise HTTPException(status_code=500, detail=f"Database error: {err}")
+    finally:
+        if 'cnx' in locals() and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
 @app.get("/events/upcoming")
 def get_upcoming_events():
     """
@@ -2106,20 +2184,15 @@ def get_event_by_id(event_id: int):
     finally:
         cursor.close()
         cnx.close()
-
 @app.get("/events", response_model=list[Event])
 def get_all_events():
     """
     Gets all events, ordered by most recent first.
-    
-    Endpoint: GET /events
-    Returns: List of all events, newest first
-    
-    SQL Pattern:
-    - Uses DATE_FORMAT to format DateTime consistently
-    - ORDER BY DateTime DESC sorts newest events first
     """
+    cnx = None  # Initialize cnx outside try block
+    cursor = None # Initialize cursor outside try block
     try:
+        # Fetch connection from the pool
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
 
@@ -2129,23 +2202,33 @@ def get_all_events():
                 ID AS id,
                 Name AS name,
                 Type AS type,
-                DATE_FORMAT(DateTime, '%Y-%m-%d %H:%i:%s') AS dateTime,  -- Format datetime consistently
+                DATE_FORMAT(DateTime, '%Y-%m-%d %H:%i:%s') AS dateTime, 
                 Location AS location,
                 Notes AS notes
             FROM Event
-            ORDER BY DateTime DESC;  -- Newest first
+            ORDER BY DateTime DESC;
         """)
 
         return cursor.fetchall()
 
     except mysql.connector.Error as err:
+        # If an error occurs, re-raise as an HTTPException
         raise HTTPException(status_code=500, detail=f"Database error: {err}")
 
     finally:
-        cursor.close()
-        cnx.close()
+        # ONLY close the cursor explicitly if it exists
+        if cursor:
+            cursor.close()
 
+        # Optional: You can explicitly call cnx.reconnect() here to try and revive
+        # a broken connection before returning it to the pool, but usually
+        # the pool itself handles this. For now, we rely on the pool manager.
+        # If you are still seeing connection errors, you may need to
+        # configure your pool's reset/stale parameters upon creation.
 
+        # --- REMOVED: cnx.close() ---
+        # The pool manager handles returning the connection to the pool.
+        pass
 # mongodb!
 @app.get("/event-types")
 def get_all_event_types():

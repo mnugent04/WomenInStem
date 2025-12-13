@@ -65,6 +65,69 @@ A full-stack application for managing youth group events, registrations, small g
    npm run dev
    ```
 
+## Running the Backend with Docker Image
+
+The backend is available as a prebuilt Docker image. This allows the API to be run without installing Python or backend dependencies locally.
+
+### Prerequisites
+- Docker
+- MySQL running locally
+- MongoDB and Redis optional
+
+### Pull the Docker Image
+```bash
+docker pull ellamcmillan/womeninstem
+```
+
+### Environment Variables
+
+When running with Docker, the backend is configured using environment variables instead of config.py.
+
+### Required MySQL variables:
+```bash
+DB_USER=root
+DB_PASSWORD=your_password
+DB_HOST=host.docker.internal
+DB_PORT=3306
+DB_NAME=YouthGroupDB
+```
+
+### Optional MongoDB and Redis variables:
+```
+MONGO_URI=your_mongo_uri
+MONGO_DB_NAME=youthgroup_db
+REDIS_HOST=host.docker.internal
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_USERNAME=
+REDIS_SSL=False
+```
+
+### Run the Backend Container
+```bash
+docker run -p 8099:8099 \
+  -e DB_USER=root \
+  -e DB_PASSWORD=your_password \
+  -e DB_HOST=host.docker.internal \
+  -e DB_PORT=3306 \
+  -e DB_NAME=YouthGroupDB \
+  ellamcmillan/womeninstem
+```
+
+### Backend Access
+
+Once running, the backend is available at:
+- REST API: http://localhost:8099
+- GraphQL API: http://localhost:8099/graphql
+- API Docs: http://localhost:8099/docs
+
+### Database Notes
+- MySQL must already be running and populated using database/schema.sql and database/data.sql
+- MongoDB and Redis are optional, related features will be disabled if not configured
+- host.docker.internal allows the Docker container to connect to services running on the host machine
+
+Then run the frontend as described in the Frontend Setup section above.
+
 ## Project Structure
 
 ```

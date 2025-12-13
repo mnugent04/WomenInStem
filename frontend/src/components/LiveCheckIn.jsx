@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, queries } from '../services/api';
+import axios from 'axios';
+
+// Note: Check-in/check-out operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function LiveCheckIn({ eventId }) {
   const [checkIns, setCheckIns] = useState(null);
@@ -15,32 +20,30 @@ function LiveCheckIn({ eventId }) {
     return () => clearInterval(interval);
   }, [eventId]);
 
-  const fetchCheckIns = () => {
+  const fetchCheckIns = async () => {
     setLoading(true);
-    api.get(`/event/${eventId}/live-checkins`)
-      .then(response => {
-        setCheckIns(response.data);
-        setLoading(false);
-      })
-      .catch(error => {
-        if (error.response?.status === 404) {
-          // No check-ins yet
-          setCheckIns({ count: 0, students: [], message: 'No one checked in yet' });
-        } else {
-          console.error('Error fetching check-ins:', error);
-        }
-        setLoading(false);
-      });
+    try {
+      const data = await graphqlRequest(queries.getLiveCheckIns, { eventId });
+      if (data.liveCheckIns) {
+        setCheckIns(data.liveCheckIns);
+      } else {
+        setCheckIns({ count: 0, students: [], message: 'No one checked in yet' });
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching check-ins:', error);
+      setCheckIns({ count: 0, students: [], message: 'No one checked in yet' });
+      setLoading(false);
+    }
   };
 
-  const fetchPeople = () => {
-    api.get('/people')
-      .then(response => {
-        setPeople(response.data);
-      })
-      .catch(error => {
-        console.error('Error fetching people:', error);
-      });
+  const fetchPeople = async () => {
+    try {
+      const data = await graphqlRequest(queries.getAllPeople);
+      setPeople(data.people);
+    } catch (error) {
+      console.error('Error fetching people:', error);
+    }
   };
 
   const handleCheckIn = () => {
@@ -49,7 +52,8 @@ function LiveCheckIn({ eventId }) {
       return;
     }
 
-    api.post(`/event/${eventId}/checkin/${selectedPersonId}`)
+    // TODO: Replace with GraphQL mutation when checkIn is added to schema
+    REST_API.post(`/event/${eventId}/checkin/${selectedPersonId}`)
       .then(() => {
         setSelectedPersonId('');
         fetchCheckIns();
@@ -62,7 +66,8 @@ function LiveCheckIn({ eventId }) {
 
   const handleCheckOut = (personId) => {
     if (window.confirm('Check out this person?')) {
-      api.delete(`/event/${eventId}/checkin/${personId}`)
+      // TODO: Replace with GraphQL mutation when checkOut is added to schema
+      REST_API.delete(`/event/${eventId}/checkin/${personId}`)
         .then(() => {
           fetchCheckIns();
         })

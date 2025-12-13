@@ -1,5 +1,5 @@
 """
-youthGroupFastAPI.py - Main FastAPI Application
+backend/main.py - Main FastAPI Application
 
 This is the main REST API server for the Youth Group management system.
 It provides endpoints for managing people, events, registrations, small groups,
@@ -22,7 +22,6 @@ Key Patterns:
 - Dictionary Cursors: Returns results as dicts (easier than tuples)
 - Dynamic SQL: Builds UPDATE queries based on provided fields
 """
-
 import mysql.connector
 import redis
 from fastapi import FastAPI, HTTPException, Request, Body
@@ -36,49 +35,39 @@ from datetime import datetime
 
 # --- Database Configuration ---
 # Import database credentials from config.py (keeps secrets separate)
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, \
+from backend.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, REDIS_SSL, REDIS_USERNAME, REDIS_PORT, \
     REDIS_PASSWORD, REDIS_HOST, MONGO_URI
-from database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db, get_redis_conn, \
+from backend.database import get_mysql_pool, get_mongo_client, close_connections, get_mongo_db, get_redis_conn, \
     get_redis_client, get_db_connection
 
 # --- Connection Pooling ---
-# Create MySQL connection pool at startup
-# Pool maintains 5 connections that are reused for all requests
+# Initialize MySQL connection pool at startup
+# Pool maintains connections that are reused for all requests
 # This is MUCH more efficient than creating a new connection for each request
-try:
-    db_pool = mysql.connector.pooling.MySQLConnectionPool(
-        pool_name="fastapi_pool",  # Name for this pool
-        pool_size=30,  # Maximum connections in pool
-        user=DB_USER,  # Database username
-        password=DB_PASSWORD,  # Database password
-        host=DB_HOST,  # Database server address
-        port=DB_PORT,  # Database server port
-        database=DB_NAME  # Database name
-    )
-    print("Database connection pool created successfully.")
-except mysql.connector.Error as err:
-    # If pool creation fails, exit (can't run without database)
-    print(f"Error creating connection pool: {err}")
-    exit()
+# The pool is managed by the database module
+db_pool = None  # Will be initialized in lifespan
 
 
 # --- App Lifecycle Management ---
-# @asynccontextmanager handles startup and shutdown events
-# This ensures databases are initialized when app starts and closed when app stops
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Manages application lifecycle - startup and shutdown.
-    
-    Startup: Initialize all database connections
-    Shutdown: Close all database connections gracefully
     """
-    # Startup: Initialize all database connections
     print("Application startup: Initializing database connections...")
-    get_mysql_pool()  # Initialize MySQL pool (already done above, but ensures it exists)
-    get_mongo_client()  # Initialize MongoDB client
-    # get_redis_client()  # Redis can be initialized on-demand if needed
+
+    # Startup: Initialize all database connections
+    global db_pool
+    try:
+        db_pool = get_mysql_pool()  # Initialize MySQL pool
+        get_mongo_client()  # Initialize MongoDB client
+        print("Database connections initialized successfully.")
+    except Exception as e:
+        print(f"FATAL ERROR during startup: {e}")
+        raise  # Re-raise to prevent app from starting with broken DB
+
     yield  # App runs here
+
     # Shutdown: Close all database connections
     print("Application shutdown: Closing database connections...")
     close_connections()  # Clean up all connections
@@ -288,6 +277,8 @@ def get_all_people():
     
     Note: Always use try/finally to ensure connections are closed even if errors occur
     """
+    cnx = None
+    cursor = None
     try:
         # Get connection from pool (reuses existing connections)
         cnx = db_pool.get_connection()
@@ -588,6 +579,8 @@ def register_for_event(event_id: int, body: dict):
         HTTPException 400: If validation fails or VolunteerID column missing
         HTTPException 500: If database error occurs
     """
+    cnx = None
+    cursor = None
     attendee_id = body.get("attendeeID")
     leader_id = body.get("leaderID")
     volunteer_id = body.get("volunteerID")
@@ -835,6 +828,8 @@ def create_attendee(person_id: int, body: dict):
     """
     Creates an Attendee record for a person. Requires guardian information.
     """
+    cnx = None
+    cursor = None
     guardian = body.get("guardian")
     if not guardian:
         raise HTTPException(400, "guardian is required")
@@ -1097,6 +1092,8 @@ def get_person_roles(person_id: int):
     """
     Gets all roles (Attendee, Leader, Volunteer) for a person.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1412,9 +1409,10 @@ def delete_small_group(group_id: int):
     Path Parameter: group_id - The ID of the group to delete
     Returns: Success message
     
-    Note: If foreign keys with CASCADE are set up, deleting a group
-    will automatically delete related members and leaders.
-    Otherwise, you may need to delete them manually first.
+    Foreign Key Handling:
+    - Must delete related SmallGroupLeader records first
+    - Must delete related SmallGroupMember records first
+    - Then can delete the SmallGroup itself
     
     Raises:
         HTTPException 404: If group not found
@@ -1431,10 +1429,15 @@ def delete_small_group(group_id: int):
         if not cursor.fetchone():
             raise HTTPException(404, "Small group not found")
 
-        # Delete the group
-        # CASCADE should handle members/leaders if foreign keys are configured
+        # Delete related leaders first (to avoid foreign key constraint)
+        cursor.execute("DELETE FROM SmallGroupLeader WHERE SmallGroupID = %s;", (group_id,))
+        
+        # Delete related members next (to avoid foreign key constraint)
+        cursor.execute("DELETE FROM SmallGroupMember WHERE SmallGroupID = %s;", (group_id,))
+        
+        # Now delete the group itself
         cursor.execute("DELETE FROM SmallGroup WHERE ID = %s;", (group_id,))
-        cnx.commit()  # Save deletion
+        cnx.commit()  # Save all deletions
 
         return {"message": "Small group deleted successfully"}
     except mysql.connector.Error as err:
@@ -1503,6 +1506,8 @@ def get_small_group_members(group_id: int):
     """
       Gets members of a small group by ID
       """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -1570,30 +1575,41 @@ def add_member_to_group(group_id: int, body: dict = Body(...)):
     cursor = None
     try:
         cnx = db_pool.get_connection()
-        cursor = cnx.cursor()
+        cursor = cnx.cursor(dictionary=True)
 
         # Check if group exists
         cursor.execute("SELECT ID FROM SmallGroup WHERE ID = %s;", (group_id,))
         if not cursor.fetchone():
             raise HTTPException(404, "Small group not found")
 
+        # First, get the PersonID from the Attendee table
+        # The attendee_id is an Attendee.ID, but SmallGroupMember.AttendeeID references Person.ID
+        cursor.execute("SELECT PersonID FROM Attendee WHERE ID = %s;", (attendee_id,))
+        attendee_data = cursor.fetchone()
+        if not attendee_data:
+            raise HTTPException(404, "Attendee not found")
+        
+        person_id = attendee_data['PersonID']
+
         # Check if person is already a member
         cursor.execute("""
             SELECT ID FROM SmallGroupMember 
             WHERE AttendeeID = %s AND SmallGroupID = %s;
-        """, (attendee_id, group_id))
+        """, (person_id, group_id))
         if cursor.fetchone():
             raise HTTPException(400, "Person is already a member of this group")
 
         # Get next ID
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupMember;")
-        next_id = cursor.fetchone()[0]
+        next_id_result = cursor.fetchone()
+        next_id = next_id_result[0] if isinstance(next_id_result, tuple) else next_id_result['nextId']
 
         # Insert
+        # Note: AttendeeID in SmallGroupMember references Person.ID, not Attendee.ID
         cursor.execute("""
             INSERT INTO SmallGroupMember (ID, AttendeeID, SmallGroupID)
             VALUES (%s, %s, %s);
-        """, (next_id, attendee_id, group_id))
+        """, (next_id, person_id, group_id))
         cnx.commit()
 
         return {"message": "Member added successfully"}
@@ -1684,30 +1700,41 @@ def add_leader_to_group(group_id: int, body: dict = Body(...)):
     cursor = None
     try:
         cnx = db_pool.get_connection()
-        cursor = cnx.cursor()
+        cursor = cnx.cursor(dictionary=True)
 
         # Verify group exists
         cursor.execute("SELECT ID FROM SmallGroup WHERE ID = %s;", (group_id,))
         if not cursor.fetchone():
             raise HTTPException(404, "Small group not found")
 
+        # First, get the PersonID from the Leader table
+        # The leader_id is a Leader.ID, but SmallGroupLeader.LeaderID references Person.ID
+        cursor.execute("SELECT PersonID FROM Leader WHERE ID = %s;", (leader_id,))
+        leader_data = cursor.fetchone()
+        if not leader_data:
+            raise HTTPException(404, "Leader not found")
+        
+        person_id = leader_data['PersonID']
+
         # Check if person is already a leader (prevent duplicate leadership)
         cursor.execute("""
             SELECT ID FROM SmallGroupLeader 
             WHERE LeaderID = %s AND SmallGroupID = %s;
-        """, (leader_id, group_id))
+        """, (person_id, group_id))
         if cursor.fetchone():
             raise HTTPException(400, "Person is already a leader of this group")
 
         # Manually calculate next ID
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupLeader;")
-        next_id = cursor.fetchone()[0]
+        next_id_result = cursor.fetchone()
+        next_id = next_id_result[0] if isinstance(next_id_result, tuple) else next_id_result['nextId']
 
         # Insert leadership record
+        # Note: LeaderID in SmallGroupLeader references Person.ID, not Leader.ID
         cursor.execute("""
             INSERT INTO SmallGroupLeader (ID, LeaderID, SmallGroupID)
             VALUES (%s, %s, %s);
-        """, (next_id, leader_id, group_id))
+        """, (next_id, person_id, group_id))
         cnx.commit()  # Save leadership assignment
 
         return {"message": "Leader added successfully"}
@@ -2350,6 +2377,7 @@ def get_all_event_types():
     - Converts ObjectId to string for JSON serialization
     - Event types have flexible schemas (different fields per type)
     """
+
     try:
         db = get_mongo_db()
         collection = db["eventTypes"]  # Access collection
@@ -2562,7 +2590,8 @@ def search_all(query: str):
         }
 
         query_lower = query.lower().strip()
-
+        cnx = None
+        cursor = None
         # Search events (MySQL)
         try:
             cnx = db_pool.get_connection()
@@ -2670,6 +2699,8 @@ def get_events_by_type(event_type: str):
     """
     Gets all events of a specific type, including MongoDB event type details.
     """
+    cnx = None
+    cursor = None
     try:
         cnx = db_pool.get_connection()
         cursor = cnx.cursor(dictionary=True)
@@ -3244,7 +3275,7 @@ async def read_demo():
 # --- GraphQL Integration ---
 # Uncomment the following lines to enable GraphQL endpoint
 # You'll need to install: pip install strawberry-graphql
-from graphql_app import graphql_app
+from backend.graphql.app import graphql_app
 
 app.include_router(graphql_app, prefix="/graphql")
 

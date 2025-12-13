@@ -3,7 +3,12 @@ import EventList from '../components/EventList';
 import EventForm from '../components/EventForm';
 import RegistrationForm from '../components/RegistrationForm';
 import EventTypeManager from '../components/EventTypeManager';
-import api from '../services/api';
+import { graphqlRequest, queries, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Update and delete event operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function Events() {
     const [events, setEvents] = useState([]);
@@ -20,17 +25,16 @@ function Events() {
     const [registeringForEventId, setRegisteringForEventId] = useState(null);
     const [showEventTypes, setShowEventTypes] = useState(false);
 
-    const fetchEvents = () => {
+    const fetchEvents = async () => {
         setLoading(true);
-        api.get('/events')
-            .then(response => {
-                setEvents(response.data);
-                setLoading(false);
-            })
-            .catch(error => {
-                setError(error);
-                setLoading(false);
-            });
+        try {
+            const data = await graphqlRequest(queries.getAllEvents);
+            setEvents(data.events);
+            setLoading(false);
+        } catch (err) {
+            setError(err);
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -49,37 +53,37 @@ function Events() {
         setEventRegistrations(null);
 
         try {
-            const regResponse = await api.get(`/events/${eventId}/registrations`);
-            setEventRegistrations(regResponse.data);
-        } catch (error) {
-            setError(error);
+            const data = await graphqlRequest(queries.getEventRegistrations, { eventId });
+            setEventRegistrations(data.eventRegistrations);
+        } catch (err) {
+            setError(err);
         } finally {
             setLoadingRegistrations(false);
         }
     };
 
-    const handleSave = (eventData) => {
-        if (eventData.id) {
-            // UPDATE
-            const {id, ...updateData} = eventData;
-
-            api.patch(`/events/${id}`, updateData)
-                .then(() => {
-                    setEditingEvent(null);
-                    setShowCreateDropdown(false); // close form after update
-                    fetchEvents();
-                })
-                .catch(error => setError(error));
-        } else {
-            // CREATE
-            const {id, ...createData} = eventData;
-
-            api.post('/events', createData)
-                .then(() => {
-                    setShowCreateDropdown(false); // auto-close after create
-                    fetchEvents();
-                })
-                .catch(error => setError(error));
+    const handleSave = async (eventData) => {
+        try {
+            if (eventData.id) {
+                // UPDATE - TODO: Replace with GraphQL mutation when updateEvent is added to schema
+                const {id, ...updateData} = eventData;
+                await REST_API.patch(`/events/${id}`, updateData);
+                setEditingEvent(null);
+                setShowCreateDropdown(false);
+            } else {
+                // CREATE
+                await graphqlRequest(mutations.createEvent, {
+                    name: eventData.name,
+                    type: eventData.type,
+                    dateTime: eventData.dateTime,
+                    location: eventData.location,
+                    notes: eventData.notes || null
+                });
+                setShowCreateDropdown(false);
+            }
+            fetchEvents();
+        } catch (err) {
+            setError(err);
         }
     };
 
@@ -95,7 +99,8 @@ function Events() {
 
     const handleDelete = (eventId) => {
         if (window.confirm('Are you sure you want to delete this event? This will also delete all registrations and related data.')) {
-            api.delete(`/events/${eventId}`)
+            // TODO: Replace with GraphQL mutation when deleteEvent is added to schema
+            REST_API.delete(`/events/${eventId}`)
                 .then(() => {
                     fetchEvents(); // Refresh the event list
                     if (expandedEventId === eventId) {

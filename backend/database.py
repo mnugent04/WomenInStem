@@ -28,7 +28,7 @@ import warnings
 
 # --- Secret Management ---
 # Import database credentials from config.py (keeps secrets separate from code)
-from config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, MONGO_URI, MONGO_DB_NAME, REDIS_HOST, REDIS_PORT, REDIS_SSL, REDIS_PASSWORD, REDIS_USERNAME
+from backend.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME, MONGO_URI, MONGO_DB_NAME, REDIS_HOST, REDIS_PORT, REDIS_SSL, REDIS_PASSWORD, REDIS_USERNAME
 
 # --- Connection Clients / Pools ---
 # Global variables to store database connections (singleton pattern)

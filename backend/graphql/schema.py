@@ -53,8 +53,8 @@ from fastapi import HTTPException
 # or directly access the database. In a real implementation, you'd refactor the
 # FastAPI endpoints to separate business logic from route handlers.
 
-from youthGroupFastAPI import (
-    db_pool,
+from backend.database import (
+    get_mysql_pool,
     get_mongo_db,
     get_redis_conn,
     get_db_connection
@@ -349,7 +349,7 @@ def get_all_people_resolver() -> List[Person]:
     """
     try:
         # Get connection from pool (reuses existing connections efficiently)
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         # Create cursor that returns results as dictionaries (easier to work with)
         cursor = cnx.cursor(dictionary=True)
         
@@ -388,7 +388,7 @@ def get_person_by_id_resolver(person_id: int) -> Optional[Person]:
     3. Return None if person not found (GraphQL handles this gracefully)
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Query with WHERE clause to filter by ID
         # %s placeholder prevents SQL injection
@@ -415,7 +415,7 @@ def get_all_events_resolver() -> List[Event]:
     3. Convert all rows to Event objects
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Query all events, ordered by date/time (newest first)
         cursor.execute("""
@@ -442,7 +442,7 @@ def get_event_by_id_resolver(event_id: int) -> Optional[Event]:
         Event object if found, None if event doesn't exist
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Query event by ID
         cursor.execute("""
@@ -468,7 +468,7 @@ def get_all_small_groups_resolver() -> List[SmallGroup]:
         List[SmallGroup]: All small groups, sorted by name
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Query all groups, ordered alphabetically
         cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup ORDER BY name;")
@@ -490,7 +490,7 @@ def get_small_group_by_id_resolver(group_id: int) -> Optional[SmallGroup]:
         SmallGroup object if found, None if group doesn't exist
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Query group by ID
         cursor.execute("SELECT ID AS id, Name AS name FROM SmallGroup WHERE ID = %s;", (group_id,))
@@ -519,7 +519,7 @@ def get_small_group_members_resolver(group_id: int) -> List[SmallGroupMember]:
         List[SmallGroupMember]: All members with their names included
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Complex JOIN query:
         # 1. Start with SmallGroupMember table
@@ -555,7 +555,7 @@ def get_small_group_leaders_resolver(group_id: int) -> List[SmallGroupLeader]:
         List[SmallGroupLeader]: All leaders with their names included
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # JOIN query to get leader names:
         # SmallGroupLeader -> Person (LeaderID is Person.ID)
@@ -576,7 +576,7 @@ def get_small_group_leaders_resolver(group_id: int) -> List[SmallGroupLeader]:
 def get_event_registrations_resolver(event_id: int) -> List[Registration]:
     """Resolver to fetch registrations for an event."""
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # Try with VolunteerID first
         try:
@@ -878,7 +878,7 @@ def create_person_resolver(person: PersonCreateInput) -> Person:
         Person: The newly created person with generated ID
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # INSERT query with placeholders (%s) to prevent SQL injection
         cursor.execute("""
@@ -922,7 +922,7 @@ def update_person_resolver(person_id: int, person: PersonUpdateInput) -> Person:
         HTTPException 404: If person not found
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         
         # Verify person exists before updating
@@ -982,7 +982,7 @@ def delete_person_resolver(person_id: int) -> bool:
         HTTPException 404: If person not found
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor()
         # Verify person exists before attempting deletion
         cursor.execute("SELECT ID FROM Person WHERE ID = %s;", (person_id,))
@@ -1009,7 +1009,7 @@ def create_event_resolver(event: EventCreateInput) -> Event:
         Event: The newly created event with generated ID
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor(dictionary=True)
         # INSERT event with all required fields
         cursor.execute("""
@@ -1050,7 +1050,7 @@ def create_small_group_resolver(group: SmallGroupCreateInput) -> SmallGroup:
         SmallGroup: The newly created group with generated ID
     """
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor()
         # Manually calculate next ID (since no AUTO_INCREMENT)
         # IFNULL handles empty table case (returns 0 if MAX returns NULL)
@@ -1069,7 +1069,7 @@ def create_small_group_resolver(group: SmallGroupCreateInput) -> SmallGroup:
 def register_for_event_resolver(event_id: int, registration: RegistrationInput) -> Registration:
     """Resolver to register someone for an event."""
     try:
-        cnx = db_pool.get_connection()
+        cnx = get_mysql_pool().get_connection()
         cursor = cnx.cursor()
         cursor.execute("SELECT IFNULL(MAX(ID),0) + 1 AS nextId FROM Registration;")
         next_id = cursor.fetchone()[0]
@@ -1110,31 +1110,54 @@ def add_member_to_group_resolver(group_id: int, input: AddMemberToGroupInput) ->
     Resolver to add a member (attendee) to a small group.
     
     Creates a relationship between an Attendee and a SmallGroup.
-    Note: attendeeId should be an Attendee ID (not Person ID).
+    Note: attendeeId is an Attendee table ID, but SmallGroupMember.AttendeeID references Person.ID,
+    so we need to look up the PersonID from the Attendee table first.
     
     Args:
         group_id: The ID of the small group
-        input: AddMemberToGroupInput with attendeeId
+        input: AddMemberToGroupInput with attendeeId (Attendee table ID)
         
     Returns:
         SmallGroupMember: The newly created membership record
     """
     try:
-        cnx = db_pool.get_connection()
-        cursor = cnx.cursor()
+        cnx = get_mysql_pool().get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # First, get the PersonID from the Attendee table
+        # The input.attendeeId is an Attendee.ID, but SmallGroupMember.AttendeeID references Person.ID
+        cursor.execute("SELECT PersonID FROM Attendee WHERE ID = %s;", (input.attendeeId,))
+        attendee_data = cursor.fetchone()
+        if not attendee_data:
+            raise HTTPException(status_code=404, detail="Attendee not found")
+        
+        person_id = attendee_data['PersonID']
+        
+        # Check if person is already a member of this group
+        cursor.execute("""
+            SELECT ID FROM SmallGroupMember 
+            WHERE AttendeeID = %s AND SmallGroupID = %s;
+        """, (person_id, group_id))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Person is already a member of this group")
+        
         # Calculate next ID manually
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupMember;")
-        next_id = cursor.fetchone()[0]
+        next_id_result = cursor.fetchone()
+        next_id = next_id_result[0] if isinstance(next_id_result, tuple) else next_id_result['nextId']
         
-        # Insert membership record linking attendee to group
+        # Insert membership record linking person to group
+        # Note: AttendeeID in SmallGroupMember references Person.ID, not Attendee.ID
         cursor.execute("""
             INSERT INTO SmallGroupMember (ID, AttendeeID, SmallGroupID)
             VALUES (%s, %s, %s);
-        """, (next_id, input.attendeeId, group_id))
+        """, (next_id, person_id, group_id))
         cnx.commit()  # Save membership
         cursor.close()
         cnx.close()
         return SmallGroupMember(id=next_id, attendeeId=input.attendeeId, smallGroupId=group_id)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
@@ -1143,31 +1166,54 @@ def add_leader_to_group_resolver(group_id: int, input: AddLeaderToGroupInput) ->
     Resolver to add a leader to a small group.
     
     Creates a relationship between a Leader and a SmallGroup.
-    Note: leaderId should be a Leader ID (not Person ID).
+    Note: leaderId is a Leader table ID, but we need to get the PersonID from the Leader table
+    because SmallGroupLeader.LeaderID references Person.ID (not Leader.ID).
     
     Args:
         group_id: The ID of the small group
-        input: AddLeaderToGroupInput with leaderId
+        input: AddLeaderToGroupInput with leaderId (Leader table ID)
         
     Returns:
         SmallGroupLeader: The newly created leadership record
     """
     try:
-        cnx = db_pool.get_connection()
-        cursor = cnx.cursor()
+        cnx = get_mysql_pool().get_connection()
+        cursor = cnx.cursor(dictionary=True)
+        
+        # First, get the PersonID from the Leader table
+        # The input.leaderId is a Leader.ID, but we need Person.ID for SmallGroupLeader.LeaderID
+        cursor.execute("SELECT PersonID FROM Leader WHERE ID = %s;", (input.leaderId,))
+        leader_data = cursor.fetchone()
+        if not leader_data:
+            raise HTTPException(status_code=404, detail="Leader not found")
+        
+        person_id = leader_data['PersonID']
+        
+        # Check if person is already a leader of this group
+        cursor.execute("""
+            SELECT ID FROM SmallGroupLeader 
+            WHERE LeaderID = %s AND SmallGroupID = %s;
+        """, (person_id, group_id))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Person is already a leader of this group")
+        
         # Calculate next ID manually
         cursor.execute("SELECT IFNULL(MAX(ID), 0) + 1 AS nextId FROM SmallGroupLeader;")
-        next_id = cursor.fetchone()[0]
+        next_id_result = cursor.fetchone()
+        next_id = next_id_result[0] if isinstance(next_id_result, tuple) else next_id_result['nextId']
         
-        # Insert leadership record linking leader to group
+        # Insert leadership record linking person to group
+        # Note: LeaderID in SmallGroupLeader references Person.ID, not Leader.ID
         cursor.execute("""
             INSERT INTO SmallGroupLeader (ID, LeaderID, SmallGroupID)
             VALUES (%s, %s, %s);
-        """, (next_id, input.leaderId, group_id))
+        """, (next_id, person_id, group_id))
         cnx.commit()  # Save leadership assignment
         cursor.close()
         cnx.close()
         return SmallGroupLeader(id=next_id, leaderId=input.leaderId, smallGroupId=group_id)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 

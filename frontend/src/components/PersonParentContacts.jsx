@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, queries } from '../services/api';
+import axios from 'axios';
+
+// Note: Add/delete parent contact operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function PersonParentContacts({ personId }) {
   const [contacts, setContacts] = useState([]);
@@ -27,22 +32,22 @@ function PersonParentContacts({ personId }) {
     fetchContacts();
   }, [personId]);
 
-  const fetchContacts = () => {
+  const fetchContacts = async () => {
     setLoading(true);
-    api.get(`/persons/${personId}/parent-contacts`)
-        .then(response => {
-          setContacts(response.data);
-          setLoading(false);
-        })
-        .catch(error => {
-          console.error('Error fetching parent contacts:', error);
-          setLoading(false);
-        });
+    try {
+      const data = await graphqlRequest(queries.getParentContacts, { personId });
+      setContacts(data.parentContacts || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching parent contacts:', error);
+      setLoading(false);
+    }
   };
 
   const handleAddContact = (e) => {
     e.preventDefault();
-    api.post(`/persons/${personId}/parent-contacts`, {
+    // TODO: Replace with GraphQL mutation when addParentContact is added to schema
+    REST_API.post(`/persons/${personId}/parent-contacts`, {
       summary: newContact.summary,
       method: newContact.method || undefined,
       date: newContact.date || undefined,
@@ -61,7 +66,8 @@ function PersonParentContacts({ personId }) {
 
   const handleDeleteContact = (contactId) => {
     if (window.confirm('Are you sure you want to delete this contact record?')) {
-      api.delete(`/parent-contacts/${contactId}`)
+      // TODO: Replace with GraphQL mutation when deleteParentContact is added to schema
+      REST_API.delete(`/parent-contacts/${contactId}`)
           .then(() => {
             fetchContacts();
           })
@@ -125,7 +131,7 @@ function PersonParentContacts({ personId }) {
         {contacts.length > 0 ? (
             <ul>
               {contacts.map((contact) => (
-                  <li key={contact._id} style={{ marginBottom: '1rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+                  <li key={contact.id} style={{ marginBottom: '1rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                       <div style={{ flex: 1 }}>
                         <p><strong>{contact.summary}</strong></p>
@@ -144,7 +150,7 @@ function PersonParentContacts({ personId }) {
                       {/* 4. DELETE BUTTON (already small, but let's ensure it's fully consistent) */}
                       <button
                           className="secondary outline"
-                          onClick={() => handleDeleteContact(contact._id)}
+                          onClick={() => handleDeleteContact(contact.id)}
                           style={smallSecondaryButtonStyle} // 🎯 Applied Consistent Style (using the smallSecondary style)
                       >
                         Delete

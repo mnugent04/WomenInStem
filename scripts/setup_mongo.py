@@ -19,7 +19,7 @@ Run this script to:
 2. Insert sample event type documents with varied structures
 """
 
-from database import get_mongo_db, close_connections
+from backend.database import get_mongo_db, close_connections
 
 
 def setup_mongo_data():

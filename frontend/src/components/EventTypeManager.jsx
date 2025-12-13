@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import axios from 'axios';
+
+// Note: Event type operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL queries/mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function EventTypeManager() {
   const [eventTypes, setEventTypes] = useState([]);
@@ -16,7 +20,8 @@ function EventTypeManager() {
 
   const fetchEventTypes = () => {
     setLoading(true);
-    api.get('/event-types')
+    // TODO: Replace with GraphQL query when eventTypes query is added to schema
+    REST_API.get('/event-types')
       .then(response => {
         setEventTypes(response.data || []);
         setLoading(false);
@@ -42,8 +47,8 @@ function EventTypeManager() {
     };
 
     if (editingType) {
-      // Update
-      api.patch(`/event-types/${editingType.event_type}`, data)
+      // Update - TODO: Replace with GraphQL mutation when updateEventType is added to schema
+      REST_API.patch(`/event-types/${editingType.event_type}`, data)
         .then(() => {
           setShowForm(false);
           setEditingType(null);
@@ -54,8 +59,8 @@ function EventTypeManager() {
           alert('Error updating event type: ' + (error.response?.data?.detail || error.message));
         });
     } else {
-      // Create
-      api.post('/event-types', data)
+      // Create - TODO: Replace with GraphQL mutation when createEventType is added to schema
+      REST_API.post('/event-types', data)
         .then(() => {
           setShowForm(false);
           resetForm();
@@ -81,7 +86,8 @@ function EventTypeManager() {
 
   const handleDelete = (eventType) => {
     if (window.confirm(`Delete event type "${eventType.event_type}"?`)) {
-      api.delete(`/event-types/${eventType.event_type}`)
+      // TODO: Replace with GraphQL mutation when deleteEventType is added to schema
+      REST_API.delete(`/event-types/${eventType.event_type}`)
         .then(() => {
           fetchEventTypes();
         })

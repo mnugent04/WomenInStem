@@ -5,7 +5,7 @@ import PersonNotes from '../components/PersonNotes';
 import PersonParentContacts from '../components/PersonParentContacts';
 import PersonRoles from '../components/PersonRoles';
 import PersonProfile from '../components/PersonProfile';
-import api from '../services/api';
+import { graphqlRequest, queries, mutations } from '../services/api';
 
 function People() {
     const [people, setPeople] = useState([]);
@@ -15,48 +15,45 @@ function People() {
     const [viewingPerson, setViewingPerson] = useState(null);
     const [profilePersonId, setProfilePersonId] = useState(null);
 
-    const fetchPeople = () => {
+    const fetchPeople = async () => {
         setLoading(true);
-        api.get('/people')
-            .then(response => {
-                setPeople(response.data);
-                setLoading(false);
-            })
-            .catch(error => {
-                setError(error);
-                setLoading(false);
-            });
+        try {
+            const data = await graphqlRequest(queries.getAllPeople);
+            setPeople(data.people);
+            setLoading(false);
+        } catch (err) {
+            setError(err);
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
         fetchPeople();
     }, []);
 
-    const handleSave = (person) => {
-        if (person.id) {
-            // Update existing person
-            const {id, ...updateData} = person;
-            api.put(`/people/${person.id}`, updateData)
-                .then(() => {
-                    setEditingPerson(null);
-                    fetchPeople();
-                })
-                .catch(error => {
-                    console.error('Error updating person:', error);
-                    setError(error);
+    const handleSave = async (person) => {
+        try {
+            if (person.id) {
+                // Update existing person
+                await graphqlRequest(mutations.updatePerson, {
+                    personId: person.id,
+                    firstName: person.firstName,
+                    lastName: person.lastName,
+                    age: person.age
                 });
-        } else {
-            // Create new person
-            const {id, ...createData} = person;
-            api.post('/people', createData)
-                .then(() => {
-                    setEditingPerson(null);
-                    fetchPeople();
-                })
-                .catch(error => {
-                    console.error('Error creating person:', error);
-                    setError(error);
+            } else {
+                // Create new person
+                await graphqlRequest(mutations.createPerson, {
+                    firstName: person.firstName,
+                    lastName: person.lastName,
+                    age: person.age
                 });
+            }
+            setEditingPerson(null);
+            fetchPeople();
+        } catch (err) {
+            console.error('Error saving person:', err);
+            setError(err);
         }
     };
 
@@ -69,16 +66,17 @@ function People() {
         setEditingPerson(person);
     };
 
-    const handleDelete = (personId) => {
+    const handleDelete = async (personId) => {
         if (window.confirm('Are you sure you want to delete this person?')) {
-            api.delete(`/people/${personId}`)
-                .then(() => {
-                    fetchPeople();
-                    if (viewingPerson && viewingPerson.id === personId) {
-                        setViewingPerson(null);
-                    }
-                })
-                .catch(error => setError(error));
+            try {
+                await graphqlRequest(mutations.deletePerson, { personId });
+                fetchPeople();
+                if (viewingPerson && viewingPerson.id === personId) {
+                    setViewingPerson(null);
+                }
+            } catch (err) {
+                setError(err);
+            }
         }
     };
 

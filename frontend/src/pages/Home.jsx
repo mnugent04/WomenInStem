@@ -1,6 +1,11 @@
 import React, {useState, useEffect} from 'react';
 import {Link} from 'react-router-dom';
-import api from '../services/api';
+import { graphqlRequest, queries } from '../services/api';
+import axios from 'axios';
+
+// Note: Upcoming events query is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL query is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function Home() {
     const [upcomingEvents, setUpcomingEvents] = useState([]);
@@ -13,26 +18,30 @@ function Home() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        Promise.all([
-            api.get('/events/upcoming'),
-            api.get('/people'),
-            api.get('/events'),
-            api.get('/smallgroups'),
-        ])
-            .then(([upcomingRes, peopleRes, eventsRes, groupsRes]) => {
+        const fetchData = async () => {
+            try {
+                // TODO: Replace with GraphQL query when upcomingEvents is added to schema
+                const [upcomingRes, peopleData, eventsData, groupsData] = await Promise.all([
+                    REST_API.get('/events/upcoming'),
+                    graphqlRequest(queries.getAllPeople),
+                    graphqlRequest(queries.getAllEvents),
+                    graphqlRequest(queries.getAllSmallGroups),
+                ]);
+                
                 setUpcomingEvents(upcomingRes.data.slice(0, 5)); // Show next 5 upcoming events
                 setStats({
-                    totalPeople: peopleRes.data.length,
-                    totalEvents: eventsRes.data.length,
-                    totalSmallGroups: groupsRes.data.length,
+                    totalPeople: peopleData.people.length,
+                    totalEvents: eventsData.events.length,
+                    totalSmallGroups: groupsData.smallGroups.length,
                 });
                 setLoading(false);
-            })
-            .catch(error => {
-                console.error('Error fetching data:', error);
-                setError(error);
+            } catch (err) {
+                console.error('Error fetching data:', err);
+                setError(err);
                 setLoading(false);
-            });
+            }
+        };
+        fetchData();
     }, []);
 
     if (loading) return <div>Loading...</div>;

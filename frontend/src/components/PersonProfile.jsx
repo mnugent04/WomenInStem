@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import axios from 'axios';
+
+// Note: Person profile query is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL query is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function PersonProfile({ personId, onClose }) {
   const [profile, setProfile] = useState(null);
@@ -9,7 +13,8 @@ function PersonProfile({ personId, onClose }) {
   useEffect(() => {
     if (personId) {
       setLoading(true);
-      api.get(`/people/${personId}/profile`)
+      // TODO: Replace with GraphQL query when personProfile query is added to schema
+      REST_API.get(`/people/${personId}/profile`)
         .then(response => {
           setProfile(response.data);
           setLoading(false);

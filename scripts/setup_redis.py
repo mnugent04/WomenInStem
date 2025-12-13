@@ -21,7 +21,7 @@ Run this script to populate Redis with sample check-in data.
 
 from datetime import datetime
 
-from database import get_redis_conn, close_connections
+from backend.database import get_redis_conn, close_connections
 
 
 def setup_redis_data():

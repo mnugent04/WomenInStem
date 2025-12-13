@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Fetching attendees/leaders/volunteers lists are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL queries are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function RegistrationForm({ eventId, onSuccess, onCancel }) {
   const [attendees, setAttendees] = useState([]);
@@ -14,11 +19,11 @@ function RegistrationForm({ eventId, onSuccess, onCancel }) {
   });
 
   useEffect(() => {
-    // Fetch actual Attendee, Leader, and Volunteer records
+    // TODO: Replace with GraphQL queries when attendees/leaders/volunteers queries are added to schema
     Promise.all([
-      api.get('/attendees'),
-      api.get('/leaders'),
-      api.get('/volunteers'),
+      REST_API.get('/attendees'),
+      REST_API.get('/leaders'),
+      REST_API.get('/volunteers'),
     ])
       .then(([attendeesRes, leadersRes, volunteersRes]) => {
         console.log('Fetched attendees:', attendeesRes.data);
@@ -32,20 +37,7 @@ function RegistrationForm({ eventId, onSuccess, onCancel }) {
       .catch(error => {
         console.error('Error fetching attendees/leaders/volunteers:', error);
         console.error('Error details:', error.response?.data || error.message);
-        // If endpoints don't exist or return errors, try fallback to people
-        // But note: this won't work correctly for registration since we need Attendee/Leader/Volunteer IDs
-        api.get('/people')
-          .then(peopleRes => {
-            console.warn('Using people as fallback - registration may not work correctly');
-            setAttendees(peopleRes.data || []);
-            setLeaders(peopleRes.data || []);
-            setVolunteers(peopleRes.data || []);
-            setLoading(false);
-          })
-          .catch(err => {
-            console.error('Error fetching people:', err);
-            setLoading(false);
-          });
+        setLoading(false);
       });
   }, []);
 
@@ -92,8 +84,15 @@ function RegistrationForm({ eventId, onSuccess, onCancel }) {
       emergencyContact: formData.emergencyContact.trim(),
     };
 
-    api.post(`/events/${eventId}/registrations`, registrationData)
-      .then(response => {
+    // Use GraphQL mutation for registration
+    graphqlRequest(mutations.registerForEvent, {
+      eventId,
+      attendeeId: registrationData.attendeeID || null,
+      leaderId: registrationData.leaderID || null,
+      volunteerId: registrationData.volunteerID || null,
+      emergencyContact: registrationData.emergencyContact
+    })
+      .then(() => {
         alert('Registration successful!');
         setFormData({
           attendeeID: '',
@@ -105,7 +104,7 @@ function RegistrationForm({ eventId, onSuccess, onCancel }) {
       })
       .catch(error => {
         console.error('Error registering:', error);
-        alert('Error registering: ' + (error.response?.data?.detail || error.message));
+        alert('Error registering: ' + (error.response?.errors?.[0]?.message || error.message));
       });
   };
 

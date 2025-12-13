@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Fetching attendees list is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL query is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function AddMemberToGroup({ groupId, onSuccess, onCancel }) {
   const [attendees, setAttendees] = useState([]);
@@ -7,7 +12,8 @@ function AddMemberToGroup({ groupId, onSuccess, onCancel }) {
   const [selectedAttendeeId, setSelectedAttendeeId] = useState('');
 
   useEffect(() => {
-    api.get('/attendees')
+    // TODO: Replace with GraphQL query when attendees query is added to schema
+    REST_API.get('/attendees')
       .then(response => {
         setAttendees(response.data || []);
         setLoading(false);
@@ -18,24 +24,32 @@ function AddMemberToGroup({ groupId, onSuccess, onCancel }) {
       });
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedAttendeeId) {
       alert('Please select an attendee');
       return;
     }
 
-    api.post(`/smallgroups/${groupId}/members`, {
-      attendeeID: parseInt(selectedAttendeeId)
-    })
-      .then(() => {
-        setSelectedAttendeeId('');
-        if (onSuccess) onSuccess();
-      })
-      .catch(error => {
-        console.error('Error adding member:', error);
-        alert('Error: ' + (error.response?.data?.detail || error.message));
+    try {
+      // Note: The GraphQL mutation expects attendeeId (the Attendee ID), not personId
+      // We need to find the attendee ID from the selected personId
+      const attendee = attendees.find(a => a.personId === parseInt(selectedAttendeeId));
+      if (!attendee) {
+        alert('Attendee not found');
+        return;
+      }
+
+      await graphqlRequest(mutations.addMemberToGroup, {
+        groupId,
+        attendeeId: attendee.id
       });
+      setSelectedAttendeeId('');
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error('Error adding member:', error);
+      alert('Error: ' + (error.response?.errors?.[0]?.message || error.message));
+    }
   };
 
   if (loading) return <div>Loading attendees...</div>;

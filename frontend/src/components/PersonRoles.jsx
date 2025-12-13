@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import axios from 'axios';
+
+// Note: Person roles operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL queries/mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function PersonRoles({ personId, onUpdate }) {
   const [roles, setRoles] = useState(null);
@@ -23,7 +27,8 @@ function PersonRoles({ personId, onUpdate }) {
 
   const fetchRoles = () => {
     setLoading(true);
-    api.get(`/people/${personId}/roles`)
+    // TODO: Replace with GraphQL query when personRoles query is added to schema
+    REST_API.get(`/people/${personId}/roles`)
         .then(response => {
           setRoles(response.data);
           setLoading(false);
@@ -36,7 +41,8 @@ function PersonRoles({ personId, onUpdate }) {
 
   const handleAddAttendee = (e) => {
     e.preventDefault();
-    api.post(`/people/${personId}/attendee`, { guardian: guardian.trim() })
+    // TODO: Replace with GraphQL mutation when addAttendeeRole is added to schema
+    REST_API.post(`/people/${personId}/attendee`, { guardian: guardian.trim() })
         .then(() => {
           setGuardian('');
           setShowAddAttendee(false);
@@ -50,7 +56,8 @@ function PersonRoles({ personId, onUpdate }) {
   };
 
   const handleAddLeader = () => {
-    api.post(`/people/${personId}/leader`)
+    // TODO: Replace with GraphQL mutation when addLeaderRole is added to schema
+    REST_API.post(`/people/${personId}/leader`)
         .then(() => {
           fetchRoles();
           if (onUpdate) onUpdate();
@@ -62,7 +69,8 @@ function PersonRoles({ personId, onUpdate }) {
   };
 
   const handleAddVolunteer = () => {
-    api.post(`/people/${personId}/volunteer`)
+    // TODO: Replace with GraphQL mutation when addVolunteerRole is added to schema
+    REST_API.post(`/people/${personId}/volunteer`)
         .then(() => {
           fetchRoles();
           if (onUpdate) onUpdate();
@@ -75,7 +83,8 @@ function PersonRoles({ personId, onUpdate }) {
 
   const handleRemoveAttendee = () => {
     if (window.confirm('Are you sure you want to remove the Attendee role?')) {
-      api.delete(`/attendees/${roles.attendee.id}`)
+      // TODO: Replace with GraphQL mutation when removeAttendeeRole is added to schema
+      REST_API.delete(`/attendees/${roles.attendee.id}`)
           .then(() => {
             fetchRoles();
             if (onUpdate) onUpdate();
@@ -89,7 +98,8 @@ function PersonRoles({ personId, onUpdate }) {
 
   const handleRemoveLeader = () => {
     if (window.confirm('Are you sure you want to remove the Leader role?')) {
-      api.delete(`/leaders/${roles.leader.id}`)
+      // TODO: Replace with GraphQL mutation when removeLeaderRole is added to schema
+      REST_API.delete(`/leaders/${roles.leader.id}`)
           .then(() => {
             fetchRoles();
             if (onUpdate) onUpdate();
@@ -103,7 +113,8 @@ function PersonRoles({ personId, onUpdate }) {
 
   const handleRemoveVolunteer = () => {
     if (window.confirm('Are you sure you want to remove the Volunteer role?')) {
-      api.delete(`/volunteers/${roles.volunteer.id}`)
+      // TODO: Replace with GraphQL mutation when removeVolunteerRole is added to schema
+      REST_API.delete(`/volunteers/${roles.volunteer.id}`)
           .then(() => {
             fetchRoles();
             if (onUpdate) onUpdate();

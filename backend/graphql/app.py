@@ -6,7 +6,7 @@ GraphQL provides an alternative to REST APIs - clients can request exactly the d
 
 Key Concepts:
 - GraphQL Router: Connects the GraphQL schema to FastAPI routes
-- Schema: Defined in graphql_schema.py, describes all available queries and mutations
+- Schema: Defined in backend/graphql/schema.py, describes all available queries and mutations
 - Single Endpoint: Unlike REST (many endpoints), GraphQL uses one endpoint (/graphql)
 - Query Language: Clients send queries describing what data they want
 
@@ -27,14 +27,14 @@ Example GraphQL Query:
 
 To use GraphQL with your FastAPI app:
 1. Install strawberry: pip install strawberry-graphql
-2. Import this router in youthGroupFastAPI.py
+2. Import this router in backend/main.py
 3. Add router to FastAPI app: app.include_router(graphql_app, prefix="/graphql")
 4. Access GraphQL at http://localhost:8099/graphql
 """
 
 from fastapi import FastAPI
 from strawberry.fastapi import GraphQLRouter
-from graphql_schema import schema  # Import the schema defined in graphql_schema.py
+from backend.graphql.schema import schema  # Import the schema defined in schema.py
 
 # Create GraphQL router
 # This router handles all GraphQL requests and routes them to the appropriate resolvers
@@ -42,8 +42,8 @@ from graphql_schema import schema  # Import the schema defined in graphql_schema
 graphql_app = GraphQLRouter(schema)
 
 # This router will be imported and added to the main FastAPI app
-# In youthGroupFastAPI.py, add:
-#   from graphql_app import graphql_app
+# In backend/main.py, add:
+#   from backend.graphql.app import graphql_app
 #   app.include_router(graphql_app, prefix="/graphql")
 # This makes GraphQL available at the /graphql endpoint
 

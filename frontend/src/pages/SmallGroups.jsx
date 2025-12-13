@@ -3,7 +3,12 @@ import SmallGroupList from '../components/SmallGroupList';
 import SmallGroupForm from '../components/SmallGroupForm';
 import AddMemberToGroup from '../components/AddMemberToGroup';
 import AddLeaderToGroup from '../components/AddLeaderToGroup';
-import api from '../services/api';
+import { graphqlRequest, queries, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Delete group and remove member/leader operations are not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL mutations are added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function SmallGroups() {
     const [smallGroups, setSmallGroups] = useState([]);
@@ -16,17 +21,16 @@ function SmallGroups() {
     const [showAddLeader, setShowAddLeader] = useState(null);
     const [showCreateForm, setShowCreateForm] = useState(false);
 
-    const fetchGroups = () => {
+    const fetchGroups = async () => {
         setLoading(true);
-        api.get('/smallgroups')
-            .then(response => {
-                setSmallGroups(response.data);
-                setLoading(false);
-            })
-            .catch(error => {
-                setError(error);
-                setLoading(false);
-            });
+        try {
+            const data = await graphqlRequest(queries.getAllSmallGroups);
+            setSmallGroups(data.smallGroups);
+            setLoading(false);
+        } catch (err) {
+            setError(err);
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -47,38 +51,38 @@ function SmallGroups() {
         setGroupDetails(null);
 
         try {
-            const [membersResponse, leadersResponse] = await Promise.all([
-                api.get(`/smallgroups/${groupId}/members`),
-                api.get(`/smallgroups/${groupId}/leaders`)
+            const [membersData, leadersData] = await Promise.all([
+                graphqlRequest(queries.getSmallGroupMembers, { groupId }),
+                graphqlRequest(queries.getSmallGroupLeaders, { groupId })
             ]);
 
             setGroupDetails({
-                members: membersResponse.data,
-                leaders: leadersResponse.data
+                members: membersData.smallGroupMembers,
+                leaders: leadersData.smallGroupLeaders
             });
-        } catch (error) {
-            console.error('Error fetching group details:', error);
-            setError(error);
+        } catch (err) {
+            console.error('Error fetching group details:', err);
+            setError(err);
         } finally {
             setLoadingDetails(false);
         }
     };
 
-    const handleCreateGroup = (groupData) => {
-        api.post('/smallgroups', groupData)
-            .then(() => {
-                setShowCreateForm(false);
-                fetchGroups();
-            })
-            .catch(error => {
-                console.error('Error creating group:', error);
-                alert('Error: ' + (error.response?.data?.detail || error.message));
-            });
+    const handleCreateGroup = async (groupData) => {
+        try {
+            await graphqlRequest(mutations.createSmallGroup, { name: groupData.name });
+            setShowCreateForm(false);
+            fetchGroups();
+        } catch (err) {
+            console.error('Error creating group:', err);
+            alert('Error: ' + (err.response?.errors?.[0]?.message || err.message));
+        }
     };
 
     const handleDeleteGroup = (groupId) => {
         if (window.confirm('Are you sure you want to delete this small group? This will remove all members and leaders.')) {
-            api.delete(`/smallgroups/${groupId}`)
+            // TODO: Replace with GraphQL mutation when deleteSmallGroup is added to schema
+            REST_API.delete(`/smallgroups/${groupId}`)
                 .then(() => {
                     if (expandedGroupId === groupId) {
                         setExpandedGroupId(null);
@@ -131,7 +135,8 @@ function SmallGroups() {
 
     const handleRemoveMember = (groupId, memberId) => {
         if (window.confirm('Remove this member from the group?')) {
-            api.delete(`/smallgroups/${groupId}/members/${memberId}`)
+            // TODO: Replace with GraphQL mutation when removeMemberFromGroup is added to schema
+            REST_API.delete(`/smallgroups/${groupId}/members/${memberId}`)
                 .then(() => {
                     // Refresh group details
                     handleGroupClick(groupId);
@@ -145,7 +150,8 @@ function SmallGroups() {
 
     const handleRemoveLeader = (groupId, leaderId) => {
         if (window.confirm('Remove this leader from the group?')) {
-            api.delete(`/smallgroups/${groupId}/leaders/${leaderId}`)
+            // TODO: Replace with GraphQL mutation when removeLeaderFromGroup is added to schema
+            REST_API.delete(`/smallgroups/${groupId}/leaders/${leaderId}`)
                 .then(() => {
                     // Refresh group details
                     handleGroupClick(groupId);

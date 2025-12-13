@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, queries, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Delete note operation is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL mutation is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function PersonNotes({ personId }) {
   const [notes, setNotes] = useState([]);
@@ -30,40 +35,40 @@ function PersonNotes({ personId }) {
     fetchNotes();
   }, [personId]);
 
-  const fetchNotes = () => {
+  const fetchNotes = async () => {
     setLoading(true);
-    api.get(`/persons/${personId}/notes`)
-        .then(response => {
-          setNotes(response.data);
-          setLoading(false);
-        })
-        .catch(error => {
-          console.error('Error fetching notes:', error);
-          setLoading(false);
-        });
+    try {
+      const data = await graphqlRequest(queries.getPersonNotes, { personId });
+      setNotes(data.personNotes || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      setLoading(false);
+    }
   };
 
-  const handleAddNote = (e) => {
+  const handleAddNote = async (e) => {
     e.preventDefault();
-    api.post(`/persons/${personId}/notes`, {
-      text: newNote.text,
-      category: newNote.category || undefined,
-      createdBy: 1, // In a real app, this would come from auth context
-    })
-        .then(() => {
-          setNewNote({ text: '', category: '' });
-          setShowAddForm(false);
-          fetchNotes();
-        })
-        .catch(error => {
-          console.error('Error adding note:', error);
-          alert('Error adding note: ' + (error.response?.data?.detail || error.message));
-        });
+    try {
+      await graphqlRequest(mutations.addPersonNote, {
+        personId,
+        text: newNote.text,
+        category: newNote.category || null,
+        createdBy: '1' // In a real app, this would come from auth context
+      });
+      setNewNote({ text: '', category: '' });
+      setShowAddForm(false);
+      fetchNotes();
+    } catch (error) {
+      console.error('Error adding note:', error);
+      alert('Error adding note: ' + (error.response?.errors?.[0]?.message || error.message));
+    }
   };
 
   const handleDeleteNote = (noteId) => {
     if (window.confirm('Are you sure you want to delete this note?')) {
-      api.delete(`/notes/${noteId}`)
+      // TODO: Replace with GraphQL mutation when deletePersonNote is added to schema
+      REST_API.delete(`/notes/${noteId}`)
           .then(() => {
             fetchNotes();
           })
@@ -120,7 +125,7 @@ function PersonNotes({ personId }) {
         {notes.length > 0 ? (
             <ul>
               {notes.map((note) => (
-                  <li key={note._id} style={{ marginBottom: '1rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+                  <li key={note.id} style={{ marginBottom: '1rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                       <div style={{ flex: 1 }}>
                         <p>{note.text}</p>
@@ -136,7 +141,7 @@ function PersonNotes({ personId }) {
                       {/* 3. DELETE BUTTON */}
                       <button
                           className="secondary outline" // Added 'outline' class for visual consistency with delete/remove actions
-                          onClick={() => handleDeleteNote(note._id)}
+                          onClick={() => handleDeleteNote(note.id)}
                           style={smallActionButtonStyle} // 🎯 Applied Consistent Style
                       >
                         Delete

@@ -1,5 +1,9 @@
 import React, {useState} from 'react';
-import api from '../services/api';
+import axios from 'axios';
+
+// Note: Search operation is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL query is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function SearchBar({onResults}) {
     const [query, setQuery] = useState('');
@@ -11,7 +15,8 @@ function SearchBar({onResults}) {
 
         setLoading(true);
         try {
-            const response = await api.get('/search', {
+            // TODO: Replace with GraphQL query when search is added to schema
+            const response = await REST_API.get('/search', {
                 params: {query: query.trim()}
             });
             if (onResults) {

@@ -53,7 +53,6 @@ ENV DB_HOST="host.docker.internal"
 # This is the command executed when you run the container
 # --host 0.0.0.0: Makes server accessible from outside container (not just localhost)
 # --port 8099: Port the server listens on
-# --app-dir /app: Sets working directory so Python can find modules
-# youthGroupFastAPI:app: Module name (youthGroupFastAPI.py) and app object name
-CMD ["uvicorn", "youthGroupFastAPI:app", "--host", "0.0.0.0", "--port", "8099", "--app-dir", "/app"]
+# backend.main:app: Module path (backend/main.py) and app object name
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8099"]
 

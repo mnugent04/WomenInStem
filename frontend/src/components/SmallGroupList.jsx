@@ -26,45 +26,55 @@ function SmallGroupList({
             </div>
             {list && list.length > 0 ? (
                 <ul style={{ marginTop: '0.5rem', marginBottom: '1rem', listStyle: 'disc', paddingLeft: '20px' }}>
-                    {list.map((person) => (
-                        <li key={person.ID} style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '0.25rem',
-                        }}>
-                            {/* 1. Name Span: Flex to fill space, hides overflow if name is too long */}
-                            <span style={{
-                                flexGrow: 1,           // Takes up available space
-                                flexShrink: 1,         // Allows it to shrink
-                                overflow: 'hidden',    // Hides text that exceeds the container
-                                textOverflow: 'ellipsis', // Adds "..." to long names
-                                whiteSpace: 'nowrap',  // Ensures the text stays on one line
-                                marginRight: '0.5rem'  // Small gap before the button
+                    {list.map((person) => {
+                        // Handle both GraphQL (camelCase) and REST (PascalCase) formats
+                        const firstName = person.firstName || person.FirstName || '';
+                        const lastName = person.lastName || person.LastName || '';
+                        // For remove operations, we need the SmallGroupMember/SmallGroupLeader ID (not person ID)
+                        const recordId = person.id || person.ID;
+                        // Use recordId for key and remove operations
+                        const displayKey = recordId || `${person.attendeeId || person.leaderId}-${expandedGroupId}`;
+                        
+                        return (
+                            <li key={displayKey} style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '0.25rem',
                             }}>
-                                {person.FirstName} {person.LastName}
-                            </span>
+                                {/* 1. Name Span: Flex to fill space, hides overflow if name is too long */}
+                                <span style={{
+                                    flexGrow: 1,           // Takes up available space
+                                    flexShrink: 1,         // Allows it to shrink
+                                    overflow: 'hidden',    // Hides text that exceeds the container
+                                    textOverflow: 'ellipsis', // Adds "..." to long names
+                                    whiteSpace: 'nowrap',  // Ensures the text stays on one line
+                                    marginRight: '0.5rem'  // Small gap before the button
+                                }}>
+                                    {firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || 'Unknown'}
+                                </span>
 
-                            {onRemove && (
-                                <button
-                                    className="secondary"
-                                    style={{
-                                        padding: '0.25rem 0.5rem',
-                                        fontSize: '0.75rem',
-                                        // 2. Button: FIXED width (e.g., 5rem) for perfect consistency
-                                        width: '5rem',
-                                        // Set a consistent height to prevent vertical variation if text wraps
-                                        height: '1.75rem',
-                                        textAlign: 'center',
-                                        flexShrink: 0 // Prevent the button from shrinking
-                                    }}
-                                    onClick={() => onRemove(expandedGroupId, person.ID)}
-                                >
-                                    Remove
-                                </button>
-                            )}
-                        </li>
-                    ))}
+                                {onRemove && (
+                                    <button
+                                        className="secondary"
+                                        style={{
+                                            padding: '0.25rem 0.5rem',
+                                            fontSize: '0.75rem',
+                                            // 2. Button: FIXED width (e.g., 5rem) for perfect consistency
+                                            width: '5rem',
+                                            // Set a consistent height to prevent vertical variation if text wraps
+                                            height: '1.75rem',
+                                            textAlign: 'center',
+                                            flexShrink: 0 // Prevent the button from shrinking
+                                        }}
+                                        onClick={() => onRemove(expandedGroupId, recordId)}
+                                    >
+                                        Remove
+                                    </button>
+                                )}
+                            </li>
+                        );
+                    })}
                 </ul>
             ) : (
                 <p style={{ fontStyle: 'italic', color: '#666', marginTop: '0.5rem' }}>No {title.toLowerCase()} yet.</p>

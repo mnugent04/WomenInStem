@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import { graphqlRequest, queries } from '../services/api';
 
 function EventComprehensive({ eventId }) {
   const [summary, setSummary] = useState(null);
@@ -10,22 +10,19 @@ function EventComprehensive({ eventId }) {
     fetchSummary();
   }, [eventId]);
 
-  const fetchSummary = () => {
+  const fetchSummary = async () => {
     setLoading(true);
     setError(null);
-    api.get(`/events/${eventId}/comprehensive`)
-      .then(response => {
-        console.log('Comprehensive summary response:', response.data);
-        setSummary(response.data);
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error('Error fetching comprehensive summary:', error);
-        console.error('Error response:', error.response?.data);
-        console.error('Error status:', error.response?.status);
-        setError(error);
-        setLoading(false);
-      });
+    try {
+      const data = await graphqlRequest(queries.getComprehensiveEventSummary, { eventId });
+      console.log('Comprehensive summary response:', data);
+      setSummary(data.comprehensiveEventSummary);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching comprehensive summary:', err);
+      setError(err);
+      setLoading(false);
+    }
   };
 
   if (loading) return <div>Loading comprehensive summary...</div>;
@@ -92,49 +89,21 @@ function EventComprehensive({ eventId }) {
       {/* Live Check-Ins from Redis */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h5>Live Check-Ins (Redis) - {summary.liveCheckIns.count} checked in</h5>
-        {summary.liveCheckIns.students.length > 0 ? (
-          <ul style={{ marginTop: '0.5rem' }}>
-            {summary.liveCheckIns.students.map((student) => (
-              <li key={student.personId} style={{ marginBottom: '0.5rem', padding: '0.5rem', backgroundColor: '#e8f5e9', borderRadius: '4px' }}>
-                <strong>{student.firstName} {student.lastName}</strong>
-                {student.checkInTime && (
-                  <span style={{ fontSize: '0.9em', color: '#666', marginLeft: '0.5rem' }}>
-                    - Checked in: {new Date(student.checkInTime).toLocaleString()}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p style={{ fontStyle: 'italic', color: '#666' }}>No one checked in yet</p>
-        )}
+        {/* Note: Students list is not included in comprehensiveEventSummary, only count */}
+        <p style={{ fontStyle: 'italic', color: '#666' }}>
+          {summary.liveCheckIns.count > 0 ? `${summary.liveCheckIns.count} students checked in` : 'No one checked in yet'}
+        </p>
       </div>
 
       {/* Event Notes from MongoDB */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h5>Event Notes & Highlights (MongoDB) - {summary.notes.count} notes</h5>
-        {summary.notes.list.length > 0 ? (
-          <ul style={{ marginTop: '0.5rem' }}>
-            {summary.notes.list.map((note) => (
-              <li key={note._id} style={{ marginBottom: '0.5rem', padding: '0.5rem', backgroundColor: 'white', border: '1px solid #eee', borderRadius: '4px' }}>
-                {note.notes && <p><strong>Notes:</strong> {note.notes}</p>}
-                {note.concerns && (
-                  <p style={{ color: '#d32f2f' }}><strong>Concerns:</strong> {note.concerns}</p>
-                )}
-                {note.studentWins && (
-                  <p style={{ color: '#2e7d32' }}><strong>Student Wins:</strong> {note.studentWins}</p>
-                )}
-                {note.created && (
-                  <small style={{ color: '#999' }}>
-                    Created: {new Date(note.created).toLocaleString()}
-                  </small>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p style={{ fontStyle: 'italic', color: '#666' }}>No notes yet</p>
-        )}
+        <p style={{ fontStyle: 'italic', color: '#666' }}>
+          {summary.notes.count > 0 ? `${summary.notes.count} notes recorded` : 'No notes yet'}
+        </p>
+        <p style={{ fontSize: '0.9em', color: '#999' }}>
+          (Note: Individual note details are not included in comprehensive summary. Use Event Notes section to view details.)
+        </p>
       </div>
 
       {/* Data Sources Info */}

@@ -1,5 +1,10 @@
 import React, {useState, useEffect} from 'react';
-import api from '../services/api';
+import { graphqlRequest, mutations } from '../services/api';
+import axios from 'axios';
+
+// Note: Fetching leaders list is not yet available in GraphQL schema
+// Using REST API as fallback until GraphQL query is added
+const REST_API = axios.create({ baseURL: 'http://127.0.0.1:8099' });
 
 function AddLeaderToGroup({groupId, onSuccess, onCancel}) {
     const [leaders, setLeaders] = useState([]);
@@ -7,7 +12,8 @@ function AddLeaderToGroup({groupId, onSuccess, onCancel}) {
     const [selectedLeaderId, setSelectedLeaderId] = useState('');
 
     useEffect(() => {
-        api.get('/leaders')
+        // TODO: Replace with GraphQL query when leaders query is added to schema
+        REST_API.get('/leaders')
             .then(response => {
                 setLeaders(response.data || []);
                 setLoading(false);
@@ -18,24 +24,32 @@ function AddLeaderToGroup({groupId, onSuccess, onCancel}) {
             });
     }, []);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!selectedLeaderId) {
             alert('Please select a leader');
             return;
         }
 
-        api.post(`/smallgroups/${groupId}/leaders`, {
-            leaderID: parseInt(selectedLeaderId)
-        })
-            .then(() => {
-                setSelectedLeaderId('');
-                if (onSuccess) onSuccess();
-            })
-            .catch(error => {
-                console.error('Error adding leader:', error);
-                alert('Error: ' + (error.response?.data?.detail || error.message));
+        try {
+            // Note: The GraphQL mutation expects leaderId (the Leader ID), not personId
+            // We need to find the leader ID from the selected personId
+            const leader = leaders.find(l => l.personId === parseInt(selectedLeaderId));
+            if (!leader) {
+                alert('Leader not found');
+                return;
+            }
+
+            await graphqlRequest(mutations.addLeaderToGroup, {
+                groupId,
+                leaderId: leader.id
             });
+            setSelectedLeaderId('');
+            if (onSuccess) onSuccess();
+        } catch (error) {
+            console.error('Error adding leader:', error);
+            alert('Error: ' + (error.response?.errors?.[0]?.message || error.message));
+        }
     };
 
     if (loading) return <div>Loading leaders...</div>;
